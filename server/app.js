@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const configService = require('./services/configService');
 
@@ -109,15 +110,17 @@ app.use('/api/v1/operator',        operatorPortalRouter);
 app.use('/api/v1/admin/settings',  settingsRouter);
 app.use('/api/v1/admin/analytics', analyticsRouter);
 
-// Serve built portal as captive portal page
+// Serve built portal only when dist exists (local dev / self-hosted; skipped on Render)
 const portalDist = path.join(__dirname, '../portal/dist');
-app.use(express.static(portalDist));
+const portalBuilt = fs.existsSync(path.join(portalDist, 'index.html'));
 
-// SPA fallback
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(portalDist, 'index.html'));
-});
+if (portalBuilt) {
+  app.use(express.static(portalDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(portalDist, 'index.html'));
+  });
+}
 
 app.use(errorHandler);
 

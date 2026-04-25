@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: glimmernet-api
+    env: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: DARAJA_ENV
+        value: sandbox
+      # Set these manually in the Render dashboard (never commit secrets):
+      - key: MONGO_URI
+        sync: false
+      - key: DARAJA_CONSUMER_KEY
+        sync: false
+      - key: DARAJA_CONSUMER_SECRET
+        sync: false
+      - key: DARAJA_SHORTCODE
+        sync: false
+      - key: DARAJA_PASSKEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MIKROTIK_HOST
+        sync: false
+      - key: MIKROTIK_USER
+        sync: false
+      - key: MIKROTIK_PASS
+        sync: false
