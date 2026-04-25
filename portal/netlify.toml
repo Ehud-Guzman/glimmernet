@@ -5,7 +5,7 @@
 # Proxy all API calls to the Render backend (no code changes needed)
 [[redirects]]
   from = "/api/*"
-  to = "https://glimmernet-api.onrender.com/api/:splat"
+  to = "https://glimmernet.onrender.com/api/:splat"
   status = 200
   force = true
 
