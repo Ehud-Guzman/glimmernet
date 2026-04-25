@@ -22,13 +22,17 @@ const app = express();
 
 app.use(helmet());
 
-// CORS — reads allowed_origins from DB on each request so changes take effect immediately.
-// Requests with no origin (Daraja callbacks, mobile apps, curl) are always allowed.
+// CORS — checks ALLOWED_ORIGINS env var first (static, set on Render), then DB setting
+// (dynamic, editable via admin dashboard). Requests with no origin are always allowed.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
+const ENV_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
 
 app.use(cors({
   origin: async (origin, cb) => {
     if (!origin) return cb(null, true);
+    if (ENV_ORIGINS.includes(origin)) return cb(null, true);
     try {
       const raw = await configService.get('allowed_origins', '');
       const allowed = raw
@@ -37,7 +41,6 @@ app.use(cors({
       if (allowed.includes(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
     } catch {
-      // Fail closed in production — never fall back to dev origins if the config layer is broken.
       if (process.env.NODE_ENV !== 'production' && DEV_ORIGINS.includes(origin)) return cb(null, true);
       cb(new Error('CORS check failed'));
     }
