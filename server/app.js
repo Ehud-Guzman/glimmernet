@@ -3,7 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const configService = require('./services/configService');
 
 const bundlesRouter      = require('./routes/bundles');
@@ -96,7 +96,7 @@ const operatorWriteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
   skip: (req) => req.method === 'GET',
-  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || ipKeyGenerator(req),
   message: { success: false, message: 'Too many requests from this account. Please slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -106,7 +106,7 @@ const operatorWriteLimiter = rateLimit({
 const settlementRequestLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: 5,
-  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || ipKeyGenerator(req),
   message: { success: false, message: 'You can only request payouts 5 times per day.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -116,7 +116,7 @@ const settlementRequestLimiter = rateLimit({
 const exportLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || ipKeyGenerator(req),
   message: { success: false, message: 'Export rate limit reached. Try again in an hour.' },
   standardHeaders: true,
   legacyHeaders: false,
