@@ -3,6 +3,13 @@ const Setting = require('../models/Setting');
 const configService = require('../services/configService');
 const { invalidateDarajaToken } = require('../services/darajaService');
 const { protect, requireRole } = require('../middleware/authMiddleware');
+const { audit } = require('../utils/audit');
+
+// Keys whose values must not appear in audit logs
+const SENSITIVE_SETTING_KEYS = new Set([
+  'daraja_consumer_key', 'daraja_consumer_secret', 'daraja_passkey',
+  'daraja_b2c_security_credential', 'at_api_key', 'mikrotik_pass',
+]);
 
 const DARAJA_KEYS = new Set([
   'daraja_env', 'daraja_consumer_key', 'daraja_consumer_secret',
@@ -251,6 +258,16 @@ router.put('/:key', protect, isSuperAdmin, async (req, res, next) => {
     }
     configService.invalidate();
     if (DARAJA_KEYS.has(req.params.key)) invalidateDarajaToken();
+
+    await audit({
+      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'SETTING_UPDATED', targetModel: 'Setting', targetId: setting._id,
+      meta: {
+        key: req.params.key,
+        value: SENSITIVE_SETTING_KEYS.has(req.params.key) ? '[REDACTED]' : value,
+      },
+    });
+
     res.json({ success: true, data: setting });
   } catch (err) {
     next(err);
@@ -271,6 +288,17 @@ router.put('/', protect, isSuperAdmin, async (req, res, next) => {
     await Promise.all(ops);
     configService.invalidate();
     if (Object.keys(settings).some((k) => DARAJA_KEYS.has(k))) invalidateDarajaToken();
+
+    const redactedMeta = {};
+    for (const [k, v] of Object.entries(settings)) {
+      redactedMeta[k] = SENSITIVE_SETTING_KEYS.has(k) ? '[REDACTED]' : v;
+    }
+    await audit({
+      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'SETTINGS_BATCH_UPDATED',
+      meta: { keys: Object.keys(settings), values: redactedMeta },
+    });
+
     const updated = await Setting.find().sort({ group: 1, key: 1 }).select('-__v');
     res.json({ success: true, data: updated });
   } catch (err) {

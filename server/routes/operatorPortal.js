@@ -310,4 +310,61 @@ router.post('/settlements/request', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/operator/analytics — revenue by day (last 30 days)
+router.get('/analytics', async (req, res, next) => {
+  try {
+    const opId = req.operator._id;
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const since = new Date();
+    since.setDate(since.getDate() - days + 1);
+    since.setHours(0, 0, 0, 0);
+
+    const [dailyRevenue, topBundles] = await Promise.all([
+      Transaction.aggregate([
+        { $match: { operatorId: opId, status: 'SUCCESS', createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: {
+              year:  { $year:  { date: '$createdAt', timezone: 'Africa/Nairobi' } },
+              month: { $month: { date: '$createdAt', timezone: 'Africa/Nairobi' } },
+              day:   { $dayOfMonth: { date: '$createdAt', timezone: 'Africa/Nairobi' } },
+            },
+            revenue: { $sum: '$operatorNet' },
+            count:   { $sum: 1 },
+          },
+        },
+        { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
+      ]),
+      Transaction.aggregate([
+        { $match: { operatorId: opId, status: 'SUCCESS', createdAt: { $gte: since } } },
+        { $group: { _id: '$bundleId', revenue: { $sum: '$operatorNet' }, count: { $sum: 1 } } },
+        { $sort: { revenue: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: 'bundles', localField: '_id', foreignField: '_id', as: 'bundle' } },
+        { $unwind: { path: '$bundle', preserveNullAndEmptyArrays: true } },
+        { $project: { name: { $ifNull: ['$bundle.name', 'Unknown'] }, revenue: 1, count: 1 } },
+      ]),
+    ]);
+
+    // Fill gaps so every day has an entry
+    const map = {};
+    dailyRevenue.forEach(({ _id, revenue, count }) => {
+      const key = `${_id.year}-${String(_id.month).padStart(2, '0')}-${String(_id.day).padStart(2, '0')}`;
+      map[key] = { revenue, count };
+    });
+
+    const filled = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setDate(since.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      filled.push({ date: key, revenue: map[key]?.revenue || 0, count: map[key]?.count || 0 });
+    }
+
+    res.json({ success: true, data: { daily: filled, topBundles } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

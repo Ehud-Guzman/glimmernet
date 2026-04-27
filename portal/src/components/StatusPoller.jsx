@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { autoLogin } from '../App';
+import { useLang } from '../context/LangContext';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLLS = 40;        // ~2 minutes
 const OFFLINE_THRESHOLD = 3; // consecutive failures before showing offline warning
 
 export default function StatusPoller({ checkoutRequestId, brand = {} }) {
+  const { t } = useLang();
   const [phase, setPhase] = useState('waiting');
   const [session, setSession] = useState(null);
   const [verifying, setVerifying] = useState(false);
@@ -79,8 +81,8 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
   if (phase === 'waiting') return (
     <div className="status-screen">
       <div className="status-icon waiting">📱</div>
-      <h2>Check your phone</h2>
-      <p>An M-Pesa STK push has been sent to your number.<br />Enter your PIN to confirm payment.</p>
+      <h2>{t.checkYourPhone}</h2>
+      <p>{t.stkSent}</p>
       <div className="status-progress" aria-hidden="true">
         <div className="status-progress-bar" style={{ width: `${Math.max(progress, 8)}%` }} />
       </div>
@@ -96,29 +98,28 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
           textAlign: 'center',
           lineHeight: 1.5,
         }}>
-          Network connection lost — waiting to reconnect.<br />
-          <span style={{ opacity: 0.8, fontSize: '0.77rem' }}>Your payment is still being tracked. Don't close this page.</span>
+          {t.networkLost}<br />
+          <span style={{ opacity: 0.8, fontSize: '0.77rem' }}>{t.dontClose}</span>
         </div>
       ) : (
         <div className="dot-loader"><span /><span /><span /></div>
       )}
       <div className="pin-hint">
-        <strong>How to complete:</strong><br />
-        A pop-up will appear on your phone asking for your M-Pesa PIN.
-        Enter it to pay and get connected instantly.
+        <strong>{t.howToComplete}</strong><br />
+        {t.popupHint}
       </div>
-      <p className="support-copy subtle">Keep this page open while we confirm payment and activate access.</p>
+      <p className="support-copy subtle">{t.keepOpen}</p>
     </div>
   );
 
   if (phase === 'success') return (
     <div className="status-screen">
       <div className="status-icon success">✅</div>
-      <h2>You're connected!</h2>
-      <p>Payment confirmed. Logging you in automatically…</p>
+      <h2>{t.connected}</h2>
+      <p>{t.paymentConfirmed}</p>
       {session?.expiresAt && (
         <div className="expires-chip">
-          Access until {new Date(session.expiresAt).toLocaleString('en-KE', {
+          {t.accessUntil} {new Date(session.expiresAt).toLocaleString('en-KE', {
             hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short',
           })}
         </div>
@@ -129,26 +130,26 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
   if (phase === 'failed') return (
     <div className="status-screen">
       <div className="status-icon fail">❌</div>
-      <h2>Payment failed</h2>
-      <p>Your M-Pesa transaction was not completed.<br />You were not charged.</p>
-      <button className="retry-btn" onClick={() => window.location.reload()}>Try again</button>
+      <h2>{t.paymentFailed}</h2>
+      <p>{t.notCompleted}</p>
+      <button className="retry-btn" onClick={() => window.location.reload()}>{t.tryAgain}</button>
     </div>
   );
 
   if (phase === 'cancelled') return (
     <div className="status-screen">
       <div className="status-icon fail">⚠️</div>
-      <h2>Payment cancelled</h2>
-      <p>You cancelled the M-Pesa prompt.</p>
-      <button className="retry-btn" onClick={() => window.location.reload()}>Try again</button>
+      <h2>{t.paymentCancelled}</h2>
+      <p>{t.youCancelled}</p>
+      <button className="retry-btn" onClick={() => window.location.reload()}>{t.tryAgain}</button>
     </div>
   );
 
   if (phase === 'access_failed') return (
     <div className="status-screen">
       <div className="status-icon fail">⚠️</div>
-      <h2>Payment received</h2>
-      <p>We got your payment, but activating internet access is taking longer than expected.</p>
+      <h2>{t.paymentReceived}</h2>
+      <p>{t.activating}</p>
 
       {verifyError && (
         <p className="error-msg status-error">{verifyError}</p>
@@ -160,12 +161,12 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
         disabled={verifying}
         style={{ marginBottom: '0.75rem' }}
       >
-        {verifying ? 'Retrying activation…' : 'Retry activation'}
+        {verifying ? t.retryingActivation : t.retryActivation}
       </button>
 
       {supportParts.length > 0 && (
         <p className="support-copy">
-          If it still does not connect, contact support: <strong style={{ color: '#ddd' }}>{supportParts.join(' · ')}</strong>
+          {t.ifStuck} <strong style={{ color: '#ddd' }}>{supportParts.join(' · ')}</strong>
         </p>
       )}
     </div>
@@ -175,8 +176,8 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
   return (
     <div className="status-screen">
       <div className="status-icon fail">⏱️</div>
-      <h2>Taking longer than expected</h2>
-      <p>We couldn't confirm your payment automatically.</p>
+      <h2>{t.takingLong}</h2>
+      <p>{t.couldNotConfirm}</p>
 
       {verifyError && (
         <p className="error-msg status-error">{verifyError}</p>
@@ -188,20 +189,20 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
         disabled={verifying}
         style={{ marginBottom: '0.75rem' }}
       >
-        {verifying ? 'Checking M-Pesa…' : 'Verify my payment'}
+        {verifying ? t.checkingMpesa : t.verifyPayment}
       </button>
 
       <button className="retry-btn" onClick={() => window.location.reload()}>
-        Start over
+        {t.startOver}
       </button>
 
       <div className="support-panel">
-        <strong>Were you charged but not connected?</strong><br />
-        Press "Verify my payment" above — it checks M-Pesa directly and activates your session if the payment went through.
+        <strong>{t.charged}</strong><br />
+        {t.verifyAbove}
         {supportParts.length > 0 && (
           <>
             <br /><br />
-            Still stuck? Contact support: <strong>{supportParts.join(' · ')}</strong>
+            {t.stillStuck} <strong>{supportParts.join(' · ')}</strong>
           </>
         )}
       </div>

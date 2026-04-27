@@ -555,6 +555,143 @@ function ChangePassword() {
   );
 }
 
+// ── Analytics Tab ─────────────────────────────────────────────────────────────
+function AnalyticsTab() {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(14);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api(`/analytics?days=${days}`)
+      .then((r) => setData(r.data.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [days]);
+
+  if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}><div className="spinner" /></div>;
+  if (!data) return null;
+
+  const { daily, topBundles } = data;
+  const maxRev = Math.max(...daily.map((d) => d.revenue), 1);
+  const chartH = 140;
+
+  const fmtDate = (iso) => {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' });
+  };
+
+  const totalRev = daily.reduce((s, d) => s + d.revenue, 0);
+  const totalTxn = daily.reduce((s, d) => s + d.count, 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Summary row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+        {[
+          { label: `Revenue (${days}d)`, value: fmt(totalRev), color: 'var(--green)' },
+          { label: `Transactions (${days}d)`, value: totalTxn, color: 'var(--blue)' },
+          { label: 'Avg per day', value: fmt(totalRev / days), color: 'var(--purple)' },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '1rem 1.2rem', borderTop: `3px solid ${color}`,
+          }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-3)', marginBottom: '0.5rem' }}>{label}</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart header */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Net Revenue by Day (KES)</div>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            {[7, 14, 30].map((d) => (
+              <button key={d}
+                onClick={() => setDays(d)}
+                style={{
+                  padding: '0.3rem 0.7rem', borderRadius: 6, border: '1px solid var(--border)',
+                  background: days === d ? 'var(--accent)' : 'var(--surface-2)',
+                  color: days === d ? '#fff' : 'var(--text-3)',
+                  fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >{d}d</button>
+            ))}
+          </div>
+        </div>
+
+        {/* SVG bar chart */}
+        <div style={{ overflowX: 'auto' }}>
+          <svg
+            width={Math.max(days * 28, 300)}
+            height={chartH + 32}
+            style={{ display: 'block', minWidth: '100%' }}
+          >
+            {daily.map((d, i) => {
+              const barH = d.revenue > 0 ? Math.max((d.revenue / maxRev) * chartH, 4) : 2;
+              const x = (i / daily.length) * 100;
+              const barW = (0.7 / daily.length) * 100;
+              const xPos = `${x + (0.15 / daily.length) * 100}%`;
+              const yPos = chartH - barH;
+              return (
+                <g key={d.date}>
+                  <rect
+                    x={xPos} y={yPos}
+                    width={`${barW}%`} height={barH}
+                    rx={3}
+                    fill={d.revenue > 0 ? 'var(--accent)' : 'var(--border)'}
+                    opacity={d.revenue > 0 ? 0.85 : 1}
+                  >
+                    <title>{fmtDate(d.date)}: KES {d.revenue.toLocaleString()} ({d.count} txn)</title>
+                  </rect>
+                  {i % Math.ceil(days / 7) === 0 && (
+                    <text
+                      x={`${x + (0.5 / daily.length) * 100}%`}
+                      y={chartH + 20}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fill="var(--text-3)"
+                    >
+                      {fmtDate(d.date)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+            {/* Zero line */}
+            <line x1="0" y1={chartH} x2="100%" y2={chartH} stroke="var(--border)" strokeWidth="1" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Top bundles */}
+      {topBundles.length > 0 && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '1.25rem' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '1rem' }}>Top Bundles by Revenue</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {topBundles.map((b, i) => {
+              const pct = (b.revenue / (topBundles[0]?.revenue || 1)) * 100;
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.3rem' }}>
+                    <span style={{ fontWeight: 500 }}>{b.name}</span>
+                    <span style={{ color: 'var(--green)', fontWeight: 600 }}>{fmt(b.revenue)} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>· {b.count} txn</span></span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-2)' }}>
+                    <div style={{ height: '100%', borderRadius: 3, background: 'var(--accent)', width: `${pct}%`, transition: 'width 0.4s' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function OperatorDashboard() {
   const navigate = useNavigate();
@@ -626,7 +763,7 @@ export default function OperatorDashboard() {
   if (loading) return <div className="login-wrap"><div className="spinner" /></div>;
   if (error) return <div className="login-wrap"><p className="error-msg">{error}</p></div>;
 
-  const tabs = ['sessions', 'transactions', 'settlements', 'bundles', 'settings', 'account'];
+  const tabs = ['sessions', 'transactions', 'settlements', 'bundles', 'analytics', 'settings', 'account'];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -868,6 +1005,9 @@ export default function OperatorDashboard() {
           </div>
         </>
       )}
+
+      {/* Analytics */}
+      {tab === 'analytics' && <AnalyticsTab />}
 
       {/* Settings / Profile */}
       {tab === 'settings' && profile && (

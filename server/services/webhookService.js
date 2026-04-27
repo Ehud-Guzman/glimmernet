@@ -1,7 +1,19 @@
 const crypto = require('crypto');
+const dns = require('dns').promises;
 const https = require('https');
 const http = require('http');
 const logger = require('../utils/logger');
+
+// Blocks delivery to private/loopback IPs even when the hostname passes schema validation
+// (DNS rebinding: attacker registers a domain that resolves to 127.0.0.1).
+const PRIVATE_IP_RE = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.0\.0\.0|169\.254\.)/;
+
+const validateWebhookHost = async (hostname) => {
+  const { address } = await dns.lookup(hostname);
+  if (PRIVATE_IP_RE.test(address) || address === '::1') {
+    throw new Error(`DNS resolved to a private address (${address})`);
+  }
+};
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [0, 10_000, 30_000];
@@ -9,8 +21,18 @@ const RETRY_DELAYS_MS = [0, 10_000, 30_000];
 const sign = (secret, payload) =>
   crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
-const attemptDelivery = (operator, event, payload, signature, attempt) => {
+const attemptDelivery = async (operator, event, payload, signature, attempt) => {
   const url = new URL(operator.webhookUrl);
+
+  try {
+    await validateWebhookHost(url.hostname);
+  } catch (err) {
+    logger.error('Webhook blocked — DNS validation failed', {
+      operatorId: operator._id, event, error: err.message,
+    });
+    return;
+  }
+
   const transport = url.protocol === 'https:' ? https : http;
   const options = {
     hostname: url.hostname,
@@ -65,7 +87,12 @@ const scheduleRetry = (operator, event, payload, signature, attempt, reason) => 
     delayMs: RETRY_DELAYS_MS[next],
     reason,
   });
-  setTimeout(() => attemptDelivery(operator, event, payload, signature, next), RETRY_DELAYS_MS[next]);
+  setTimeout(
+    () => attemptDelivery(operator, event, payload, signature, next).catch((err) =>
+      logger.error('Unhandled webhook retry error', { operatorId: operator._id, error: err.message })
+    ),
+    RETRY_DELAYS_MS[next]
+  );
 };
 
 const fireWebhook = (operator, event, data) => {
@@ -76,7 +103,9 @@ const fireWebhook = (operator, event, data) => {
     ? `sha256=${sign(operator.webhookSecret, payload)}`
     : '';
 
-  attemptDelivery(operator, event, payload, signature, 0);
+  attemptDelivery(operator, event, payload, signature, 0).catch((err) =>
+    logger.error('Unhandled webhook fire error', { operatorId: operator._id, error: err.message })
+  );
 };
 
 module.exports = { fireWebhook };

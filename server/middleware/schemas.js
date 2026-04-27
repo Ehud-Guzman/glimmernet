@@ -62,7 +62,7 @@ const bundleFields = {
 
 const bundleCreate = Joi.object({
   name:            Joi.string().trim().max(100).required(),
-  price:           Joi.number().positive().required(),
+  price:           Joi.number().positive().max(100000).required(),
   mikrotikProfile: Joi.string().trim().max(50).required(),
   durationMinutes: Joi.number().integer().min(1).allow(null).default(null),
   dataMB:          Joi.number().integer().min(1).allow(null).default(null),
@@ -74,7 +74,7 @@ const bundleCreate = Joi.object({
 
 const bundleUpdate = Joi.object({
   name:            Joi.string().trim().max(100),
-  price:           Joi.number().positive(),
+  price:           Joi.number().positive().max(100000),
   mikrotikProfile: Joi.string().trim().max(50),
   durationMinutes: Joi.number().integer().min(1).allow(null),
   dataMB:          Joi.number().integer().min(1).allow(null),
@@ -90,7 +90,7 @@ const bundleUpdate = Joi.object({
 // Operator portal bundles — operatorId is always set from JWT, never from body
 const operatorBundleCreate = Joi.object({
   name:            Joi.string().trim().max(100).required(),
-  price:           Joi.number().positive().required(),
+  price:           Joi.number().positive().max(100000).required(),
   mikrotikProfile: Joi.string().trim().max(50).required(),
   durationMinutes: Joi.number().integer().min(1).allow(null).default(null),
   dataMB:          Joi.number().integer().min(1).allow(null).default(null),
@@ -101,7 +101,7 @@ const operatorBundleCreate = Joi.object({
 
 const operatorBundleUpdate = Joi.object({
   name:            Joi.string().trim().max(100),
-  price:           Joi.number().positive(),
+  price:           Joi.number().positive().max(100000),
   mikrotikProfile: Joi.string().trim().max(50),
   durationMinutes: Joi.number().integer().min(1).allow(null),
   dataMB:          Joi.number().integer().min(1).allow(null),

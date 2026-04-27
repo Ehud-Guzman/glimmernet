@@ -8,6 +8,7 @@ const AdminUserSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   resetToken: { type: String, default: null },
   resetTokenExpiry: { type: Date, default: null },
+  passwordChangedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('AdminUser', AdminUserSchema);

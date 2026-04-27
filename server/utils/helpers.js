@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 
 const sanitizePhone = (phone) => {
   let p = phone.replace(/\D/g, '');
@@ -12,9 +13,15 @@ const generatePassword = (length = 8) => {
   return crypto.randomBytes(length).toString('base64url').slice(0, length);
 };
 
-const generateUsername = (phone) => {
-  const rand = crypto.randomBytes(2).toString('hex');
-  return `u_${phone}_${Date.now()}_${rand}`;
+const generateUsername = () => `u_${new mongoose.Types.ObjectId().toHexString()}`;
+
+const getNairobiHour = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Africa/Nairobi',
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(new Date());
+  return parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10) % 24;
 };
 
 const createResumeToken = (session) => {
@@ -38,6 +45,7 @@ module.exports = {
   sanitizePhone,
   generatePassword,
   generateUsername,
+  getNairobiHour,
   createResumeToken,
   verifyResumeToken,
 };

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 const fmtDuration = (mins) => {
   if (!mins) return '—';
@@ -8,7 +9,23 @@ const fmtDuration = (mins) => {
   return `${mins}m`;
 };
 
+const EmptyState = ({ icon, title, body }) => (
+  <div style={{
+    padding: '3rem 1.5rem', textAlign: 'center',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem',
+  }}>
+    <div style={{
+      width: 56, height: 56, borderRadius: '16px',
+      background: 'var(--accent-dim)', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', fontSize: '1.6rem',
+    }}>{icon}</div>
+    <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>{title}</div>
+    <div style={{ fontSize: '0.82rem', color: 'var(--text-3)', maxWidth: 280, lineHeight: 1.6 }}>{body}</div>
+  </div>
+);
+
 function GrantModal({ onClose, onSuccess }) {
+  const toast = useToast();
   const [bundles, setBundles] = useState([]);
   const [operators, setOperators] = useState([]);
   const [selectedOp, setSelectedOp] = useState('');
@@ -21,11 +38,10 @@ function GrantModal({ onClose, onSuccess }) {
   }, []);
 
   useEffect(() => {
-    if (selectedOp === '') {
-      client.get('/admin/bundles').then((r) => setBundles(r.data.data)).catch(() => {});
-    } else {
-      client.get(`/admin/bundles?operatorId=${selectedOp}`).then((r) => setBundles(r.data.data)).catch(() => {});
-    }
+    const url = selectedOp === ''
+      ? '/admin/bundles'
+      : `/admin/bundles?operatorId=${selectedOp}`;
+    client.get(url).then((r) => setBundles(r.data.data)).catch(() => {});
   }, [selectedOp]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -41,6 +57,7 @@ function GrantModal({ onClose, onSuccess }) {
         durationMinutes: form.durationMinutes ? Number(form.durationMinutes) : undefined,
         note: form.note || 'Admin manual grant',
       });
+      toast.success('Access granted successfully.');
       onSuccess();
     } catch (e) {
       setErr(e.response?.data?.message || 'Failed to grant session.');
@@ -104,12 +121,14 @@ function GrantModal({ onClose, onSuccess }) {
 }
 
 export default function Sessions() {
+  const toast = useToast();
   const [sessions, setSessions] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [terminating, setTerminating] = useState(null);
   const [grantOpen, setGrantOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const fetchSessions = async (p = page) => {
     setLoading(true);
@@ -129,9 +148,30 @@ export default function Sessions() {
     setTerminating(id);
     try {
       await client.delete(`/admin/session/${id}`);
+      toast.success('Session terminated.');
       fetchSessions();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not terminate session.');
     } finally {
       setTerminating(null);
+    }
+  };
+
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const res = await client.get('/admin/sessions/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sessions-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Export downloaded.');
+    } catch {
+      toast.error('Export failed.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -146,15 +186,26 @@ export default function Sessions() {
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div className="page-title" style={{ margin: 0 }}>Sessions</div>
-        <button className="btn btn-primary" onClick={() => setGrantOpen(true)} style={{ fontSize: '0.82rem' }}>
-          + Grant Access
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-ghost" onClick={exportCsv} disabled={exporting} style={{ fontSize: '0.82rem' }}>
+            {exporting ? 'Exporting…' : '⬇ Export CSV'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setGrantOpen(true)} style={{ fontSize: '0.82rem' }}>
+            + Grant Access
+          </button>
+        </div>
       </div>
 
       <div className="table-wrap">
-        {loading ? <div className="spinner" /> : (
+        {loading ? <div className="spinner" /> : sessions.length === 0 ? (
+          <EmptyState
+            icon="📡"
+            title="No sessions yet"
+            body="Active and past sessions will appear here once devices connect through the captive portal."
+          />
+        ) : (
           <table>
             <thead>
               <tr>
@@ -169,7 +220,7 @@ export default function Sessions() {
             <tbody>
               {sessions.map((s) => (
                 <tr key={s._id}>
-                  <td>{s.phone}</td>
+                  <td>{s.phone || '—'}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{s.username}</td>
                   <td>{s.bundleId?.name || '—'}</td>
                   <td>{s.expiresAt ? new Date(s.expiresAt).toLocaleString() : '—'}</td>
@@ -192,11 +243,12 @@ export default function Sessions() {
           </table>
         )}
       </div>
+
       {totalPages > 1 && (
         <div className="pagination">
-          <button onClick={() => setPage((p) => p - 1)} disabled={page === 1}>Prev</button>
+          <button onClick={() => setPage((p) => p - 1)} disabled={page === 1}>← Prev</button>
           <span>Page {page} of {totalPages}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page === totalPages}>Next</button>
+          <button onClick={() => setPage((p) => p + 1)} disabled={page === totalPages}>Next →</button>
         </div>
       )}
     </>

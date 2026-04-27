@@ -6,7 +6,7 @@ const Operator = require('../models/Operator');
 const { initiateStkPush, queryStkStatus } = require('../services/darajaService');
 const { handleB2CCallback } = require('../services/settlementService');
 const { AccessProvisionError, finalizeSuccessfulPayment, enrichSessionFromTransaction } = require('../services/paymentProcessingService');
-const { sanitizePhone, createResumeToken } = require('../utils/helpers');
+const { sanitizePhone, createResumeToken, getNairobiHour } = require('../utils/helpers');
 const { syncSessionState } = require('../services/sessionService');
 const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
@@ -28,7 +28,7 @@ router.post('/initiate', validate(schemas.paymentInitiate), async (req, res, nex
     // Enforce happy-hour time window server-side (portal filters client-side, but
     // a direct API call could bypass that filter).
     if (bundle.validFromHour != null && bundle.validToHour != null) {
-      const nairobiHour = (new Date().getUTCHours() + 3) % 24;
+      const nairobiHour = getNairobiHour();
       const from = bundle.validFromHour;
       const to = bundle.validToHour;
       const inWindow = from > to

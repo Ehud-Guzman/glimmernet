@@ -20,7 +20,7 @@ const errorHandler       = require('./middleware/errorHandler');
 
 const app = express();
 
-app.use(helmet());
+app.use(helmet({ hsts: { maxAge: 31536000, includeSubDomains: true } }));
 
 // CORS — checks ALLOWED_ORIGINS env var first (static, set on Render), then DB setting
 // (dynamic, editable via admin dashboard). Requests with no origin are always allowed.
@@ -35,9 +35,12 @@ app.use(cors({
     if (ENV_ORIGINS.includes(origin)) return cb(null, true);
     try {
       const raw = await configService.get('allowed_origins', '');
-      const allowed = raw
-        ? raw.split(',').map((o) => o.trim()).filter(Boolean)
-        : DEV_ORIGINS;
+      const dbOrigins = raw ? raw.split(',').map((o) => o.trim()).filter(Boolean) : [];
+      // In non-production fall back to dev origins when DB has no list configured yet.
+      // In production an empty allowed_origins blocks all cross-origin requests (fail-secure).
+      const allowed = dbOrigins.length > 0
+        ? dbOrigins
+        : (process.env.NODE_ENV !== 'production' ? DEV_ORIGINS : []);
       if (allowed.includes(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
     } catch {
@@ -88,6 +91,37 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Operator write actions (bundle create/update, session grant) — keyed by token, not IP
+const operatorWriteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  skip: (req) => req.method === 'GET',
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  message: { success: false, message: 'Too many requests from this account. Please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Settlement requests — stricter: 5 per operator per day
+const settlementRequestLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  message: { success: false, message: 'You can only request payouts 5 times per day.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// CSV export endpoints — prevent DB-hammering large exports (10 per hour per admin)
+const exportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.headers.authorization?.split(' ')[1]?.slice(-16) || req.ip,
+  message: { success: false, message: 'Export rate limit reached. Try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Specific limiters must be registered before the general one
@@ -99,8 +133,13 @@ app.use('/api/v1/auth/reset-password',     authLimiter);
 app.use('/api/v1/operator/auth/login',     authLimiter);
 app.use('/api/v1/operator/auth/signup',   authLimiter); // prevent PENDING-operator spam
 app.use('/api/v1/admin/seed',              authLimiter); // brute-force guard on bootstrap token
-app.use('/api/v1/redeem',                  redeemLimiter); // code brute-force guard
-app.use('/api/',                       generalLimiter);
+app.use('/api/v1/redeem',                        redeemLimiter);
+app.use('/api/v1/operator/settlements/request',  settlementRequestLimiter);
+app.use('/api/v1/operator',                      operatorWriteLimiter);
+app.use('/api/v1/admin/sessions/export',         exportLimiter);
+app.use('/api/v1/admin/transactions/export',     exportLimiter);
+app.use('/api/v1/admin/vouchers/export',         exportLimiter);
+app.use('/api/',                                 generalLimiter);
 
 app.use('/api/v1/bundles',         bundlesRouter);
 app.use('/api/v1/payment',         paymentRouter);

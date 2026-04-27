@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { autoLogin } from '../App';
+import { useLang } from '../context/LangContext';
 
 const formatBundle = (b) => {
   if (!b) return '';
@@ -16,6 +17,7 @@ const formatBundle = (b) => {
 };
 
 export default function RedeemForm({ mac, operatorShortCode, brand, onBack }) {
+  const { lang, t } = useLang();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -43,8 +45,8 @@ export default function RedeemForm({ mac, operatorShortCode, brand, onBack }) {
     return (
       <div className="status-screen">
         <div className="status-icon success">✅</div>
-        <h2>{success.resumed ? 'Welcome back!' : 'Code accepted!'}</h2>
-        <p>{success.resumed ? 'Your session is still active. Logging you in…' : 'Connecting you now…'}</p>
+        <h2>{success.resumed ? t.welcomeBack : t.codeAccepted}</h2>
+        <p>{success.resumed ? t.sessionActive : t.connectingNow}</p>
         {success.bundle && (
           <div className="selected-summary" style={{ marginTop: '1rem' }}>
             <div>
@@ -68,22 +70,25 @@ export default function RedeemForm({ mac, operatorShortCode, brand, onBack }) {
     <form onSubmit={handleSubmit}>
       <div className="section-intro compact">
         <div>
-          <div className="section-eyebrow">Manual access</div>
-          <h3>Redeem a voucher or receipt</h3>
+          <div className="section-eyebrow">{t.manualAccess}</div>
+          <h3>{t.redeemTitle}</h3>
         </div>
-        <p>Perfect if you already paid earlier or received an access code from the operator.</p>
+        <p>{t.redeemCopy1}</p>
       </div>
 
-      <div className="section-label">Enter your code</div>
+      <div className="section-label">{t.enterCode}</div>
       <p className="redeem-copy">
-        Enter your M-Pesa receipt number (e.g. <strong>RLC9AB12CD</strong>) or a voucher code
-        you received (e.g. <strong>WIFI-AX3K-9P2M</strong>).
+        {lang === 'en' ? (
+          <>Enter your M-Pesa receipt number (e.g. <strong>RLC9AB12CD</strong>) or a voucher code you received (e.g. <strong>WIFI-AX3K-9P2M</strong>).</>
+        ) : (
+          <>Weka nambari ya stakabadhi ya M-Pesa (mfano <strong>RLC9AB12CD</strong>) au nambari ya vocha uliyopokea (mfano <strong>WIFI-AX3K-9P2M</strong>).</>
+        )}
       </p>
 
       <input
         type="text"
         className="code-input"
-        placeholder="WIFI-XXXX-XXXX or M-Pesa receipt"
+        placeholder={t.codePlaceholder}
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         autoFocus
@@ -91,14 +96,14 @@ export default function RedeemForm({ mac, operatorShortCode, brand, onBack }) {
         spellCheck={false}
       />
 
-      <p className="field-hint">Codes are not case-sensitive. We automatically clean and verify them.</p>
+      <p className="field-hint">{t.codeHint}</p>
 
       {error && <p className="error-msg">{error}</p>}
 
       <button className="btn-pay redeem-submit" type="submit" disabled={loading}>
-        {loading ? 'Checking code…' : 'Connect now'}
+        {loading ? t.checkingCode : t.connectNow}
       </button>
-      <button type="button" className="btn-back" onClick={onBack}>← Back to plans</button>
+      <button type="button" className="btn-back" onClick={onBack}>{t.backToPlans}</button>
     </form>
   );
 }

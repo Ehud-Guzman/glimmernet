@@ -2,6 +2,7 @@ const express = require('express');
 const Bundle = require('../models/Bundle');
 const Operator = require('../models/Operator');
 const configService = require('../services/configService');
+const { getNairobiHour } = require('../utils/helpers');
 
 const router = express.Router();
 
@@ -44,8 +45,7 @@ router.get('/', async (req, res, next) => {
     }
 
     // Filter happy-hour bundles: only show bundles currently within their time window
-    const currentHour = new Date().getUTCHours() + 3; // Africa/Nairobi is UTC+3
-    const nairobiHour = currentHour >= 24 ? currentHour - 24 : currentHour;
+    const nairobiHour = getNairobiHour();
     const bundles = allBundles.filter((b) => {
       if (b.validFromHour == null) return true; // no time restriction
       const from = b.validFromHour;

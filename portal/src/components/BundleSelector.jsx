@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { useLang } from '../context/LangContext';
 
 const POPULAR_NAME = 'Daily (24 hrs)';
 
@@ -19,6 +20,7 @@ const formatMeta = (b) => {
 };
 
 export default function BundleSelector({ operatorShortCode, onSelect }) {
+  const { t } = useLang();
   const [bundles, setBundles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,18 +47,18 @@ export default function BundleSelector({ operatorShortCode, onSelect }) {
     <>
       <div className="section-intro">
         <div>
-          <div className="section-eyebrow">Choose a package</div>
-          <h3>Select the access plan that fits your session</h3>
+          <div className="section-eyebrow">{t.choosePackage}</div>
+          <h3>{t.selectPlan}</h3>
         </div>
-        <p>Fast checkout, instant activation, and easy re-entry if your device reconnects.</p>
+        <p>{t.quickCheckout}</p>
       </div>
 
       <div className="tabs">
         <button className={`tab ${tab === 'time' ? 'active' : ''}`} onClick={() => setTab('time')}>
-          ⏱ Time Plans
+          {t.timePlans}
         </button>
         <button className={`tab ${tab === 'data' ? 'active' : ''}`} onClick={() => setTab('data')}>
-          📊 Data Plans
+          {t.dataPlans}
         </button>
       </div>
 
@@ -67,8 +69,8 @@ export default function BundleSelector({ operatorShortCode, onSelect }) {
             ? (
               <div className="empty-state">
                 <div className="empty-state-icon">{tab === 'time' ? '⏱' : '📊'}</div>
-                <h4>No {tab} plans available right now</h4>
-                <p>Switch tabs or refresh once packages are published for this operator.</p>
+                <h4>{tab === 'time' ? t.noTimePlans : t.noDataPlans}</h4>
+                <p>{t.switchTabs}</p>
               </div>
             )
           : visible.map((b) => {
@@ -105,7 +107,7 @@ export default function BundleSelector({ operatorShortCode, onSelect }) {
         disabled={!selected}
         onClick={() => selected && onSelect(selected)}
       >
-        {selected ? `Continue with ${selected.name}` : 'Continue →'}
+        {selected ? t.continueWith(selected.name) : t.continueArrow}
       </button>
     </>
   );

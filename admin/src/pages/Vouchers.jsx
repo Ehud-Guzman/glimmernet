@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
 import { isSuperAdmin } from '../utils/auth';
+import { useToast } from '../context/ToastContext';
 
 const STATUS_COLORS = {
   ACTIVE: '#00c853',
@@ -32,7 +33,34 @@ const EMPTY_FORM = {
   note: '',
 };
 
+const printBatch = (codes, batchId, bundleName) => {
+  const area = document.getElementById('voucher-print-area');
+  if (!area) return;
+  area.innerHTML = `
+    <div style="font-family:monospace;color:#000">
+      <h2 style="font-family:sans-serif;font-size:1.1rem;margin:0 0 0.25rem">GlimmerInk WiFi — Voucher Batch</h2>
+      <p style="font-family:sans-serif;font-size:0.75rem;color:#555;margin:0 0 1rem">
+        Bundle: ${bundleName || '—'} &nbsp;|&nbsp; Batch: ${batchId} &nbsp;|&nbsp;
+        Printed: ${new Date().toLocaleString('en-KE')}
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem">
+        ${codes.map((c) => `
+          <div style="border:1px dashed #ccc;border-radius:6px;padding:0.6rem 0.75rem;text-align:center">
+            <div style="font-size:0.65rem;color:#888;margin-bottom:0.2rem">WiFi Code</div>
+            <div style="font-size:1.1rem;letter-spacing:0.1em;font-weight:700">${c}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  area.className = 'voucher-print-area';
+  window.print();
+  area.innerHTML = '';
+  area.className = '';
+};
+
 export default function Vouchers() {
+  const toast = useToast();
   const [vouchers, setVouchers] = useState([]);
   const [bundles, setBundles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,8 +96,13 @@ export default function Vouchers() {
 
   const handleRevoke = async (id) => {
     if (!confirm('Revoke this voucher? This cannot be undone.')) return;
-    await client.put(`/admin/vouchers/${id}/revoke`);
-    fetchVouchers();
+    try {
+      await client.put(`/admin/vouchers/${id}/revoke`);
+      toast.success('Voucher revoked.');
+      fetchVouchers();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Revoke failed.');
+    }
   };
 
   const handleGenerate = async (e) => {
@@ -265,6 +298,7 @@ export default function Vouchers() {
                 </div>
                 <div className="modal-actions">
                   <button className="btn btn-ghost" onClick={() => handleExportBatch(genResult.batchId)}>⬇ Download CSV</button>
+                  <button className="btn btn-ghost" onClick={() => printBatch(genResult.codes, genResult.batchId, bundles.find((b) => b._id === form.bundleId)?.name)}>🖨 Print Sheet</button>
                   <button className="btn btn-primary" onClick={() => setModal(false)}>Done</button>
                 </div>
               </>

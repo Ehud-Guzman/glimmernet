@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import BundleSelector from './components/BundleSelector';
 import PaymentForm from './components/PaymentForm';
 import StatusPoller from './components/StatusPoller';
 import RedeemForm from './components/RedeemForm';
+import { useLang } from './context/LangContext';
 
 const params = new URLSearchParams(window.location.search);
 const MAC = (params.get('mac') || '').toUpperCase();
@@ -102,14 +103,66 @@ export function autoLogin(username, password, hotspotLoginUrl) {
   form.submit();
 }
 
+const THEME_KEY = 'portal-theme';
+
+const initPortalTheme = () => {
+  const saved = localStorage.getItem(THEME_KEY);
+  const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  return theme;
+};
+
+const ThemeToggle = ({ theme, onToggle }) => (
+  <button
+    onClick={onToggle}
+    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    style={{
+      background: 'none', border: 'none', cursor: 'pointer',
+      fontSize: '1.15rem', lineHeight: 1, padding: '0.2rem',
+      opacity: 0.75, transition: 'opacity 0.15s',
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
+    onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.75; }}
+  >
+    {theme === 'dark' ? '☀️' : '🌙'}
+  </button>
+);
+
+const LangToggle = ({ lang, onToggle }) => (
+  <button
+    onClick={onToggle}
+    title={lang === 'en' ? 'Badilisha Kiswahili' : 'Switch to English'}
+    style={{
+      background: 'none', border: '1px solid currentColor', borderRadius: '4px',
+      cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700,
+      lineHeight: 1, padding: '0.2rem 0.4rem', letterSpacing: '0.03em',
+      opacity: 0.65, transition: 'opacity 0.15s',
+      color: 'var(--text)',
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
+    onMouseLeave={(e) => { e.currentTarget.style.opacity = 0.65; }}
+  >
+    {lang === 'en' ? 'SW' : 'EN'}
+  </button>
+);
+
 export default function App() {
+  const { lang, t, toggle: toggleLang } = useLang();
   const [step, setStep] = useState(STEP.LOADING);
+  const [portalTheme, setPortalTheme] = useState(initPortalTheme);
   const [selectedBundle, setSelectedBundle] = useState(null);
   const [checkoutRequestId, setCheckoutRequestId] = useState(null);
   const [resumedSession, setResumedSession] = useState(null);
   const [brand, setBrand] = useState(DEFAULT_BRAND);
   const [trialLoading, setTrialLoading] = useState(false);
   const [trialError, setTrialError] = useState('');
+
+  const togglePortalTheme = useCallback(() => {
+    const next = portalTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem(THEME_KEY, next);
+    setPortalTheme(next);
+  }, [portalTheme]);
 
   useEffect(() => {
     const init = async () => {
@@ -189,7 +242,11 @@ export default function App() {
         <div className="hero-badge mobile-badge">Fast captive WiFi</div>
         <div className="wifi-icon"><BrandIcon logoUrl={brand.logoUrl} accentColor={accentColor} /></div>
         <h1>{brandName}</h1>
-        <p>{brand.brandTagline || 'Get online instantly via M-Pesa'}</p>
+        <p>{brand.brandTagline || t.tagline}</p>
+        <div className="portal-header-actions">
+          <LangToggle lang={lang} onToggle={toggleLang} />
+          <ThemeToggle theme={portalTheme} onToggle={togglePortalTheme} />
+        </div>
       </header>
 
       <aside className="portal-hero">
@@ -240,22 +297,24 @@ export default function App() {
           <div className="small-icon"><BrandIcon logoUrl={brand.logoUrl} accentColor={accentColor} size={20} /></div>
           <div>
             <h2>{brandName}</h2>
-            <p>{brand.brandTagline || 'Secure access via M-Pesa'}</p>
+            <p>{brand.brandTagline || t.taglineSub}</p>
           </div>
+          <LangToggle lang={lang} onToggle={toggleLang} />
+          <ThemeToggle theme={portalTheme} onToggle={togglePortalTheme} />
         </div>
 
         {step === STEP.LOADING && (
           <div className="loading-screen">
             <div className="dot-loader"><span /><span /><span /></div>
-            <p>Preparing your packages...</p>
+            <p>{t.loading}</p>
           </div>
         )}
 
         {step === STEP.RESUMED && resumedSession && (
           <div className="status-screen">
             <div className="status-icon success">✅</div>
-            <h2>Welcome back!</h2>
-            <p>You already have an active session. Logging you in…</p>
+            <h2>{t.welcomeBack}</h2>
+            <p>{t.activeSession}</p>
             {resumedSession.expiresAt && (() => {
               const minsLeft = Math.round((new Date(resumedSession.expiresAt) - Date.now()) / 60000);
               const label = minsLeft > 60
@@ -274,7 +333,7 @@ export default function App() {
               style={{ marginTop: '1rem' }}
               onClick={() => setStep(STEP.SELECT)}
             >
-              Top Up / Buy Another Bundle
+              {t.topUp}
             </button>
           </div>
         )}
@@ -285,10 +344,10 @@ export default function App() {
             {showTrialButton && (
               <div className="trial-banner">
                 <div className="trial-banner-title">
-                  🎁 Try free for {brand.trialMinutes} minutes
+                  {t.trialTitle(brand.trialMinutes)}
                 </div>
                 <div className="trial-banner-copy">
-                  New here? Experience the speed before you pay — no M-Pesa needed.
+                  {t.trialCopy}
                 </div>
                 {trialError && <p className="error-msg trial-error">{trialError}</p>}
                 <button
@@ -296,7 +355,7 @@ export default function App() {
                   onClick={handleStartTrial}
                   disabled={trialLoading}
                 >
-                  {trialLoading ? 'Starting…' : `Start ${brand.trialMinutes}-minute free trial`}
+                  {trialLoading ? t.trialStarting : t.trialStart(brand.trialMinutes)}
                 </button>
               </div>
             )}
@@ -305,7 +364,7 @@ export default function App() {
 
             <div className="portal-divider">
               <div className="portal-divider-line" />
-              <span>already have a code?</span>
+              <span>{t.alreadyHaveCode}</span>
               <div className="portal-divider-line" />
             </div>
             <button
@@ -313,7 +372,7 @@ export default function App() {
               className="btn-back secondary-cta"
               onClick={() => setStep(STEP.REDEEM)}
             >
-              🎟 Enter voucher or M-Pesa receipt
+              {t.enterVoucher}
             </button>
           </>
         )}

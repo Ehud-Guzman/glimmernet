@@ -78,15 +78,10 @@ router.post('/forgot-password', async (req, res, next) => {
     admin.resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await admin.save();
 
-    // AdminUser has no phone field — emit the token to server logs (visible to
-    // whoever has server access) and return it in the response in non-production.
     const logger = require('../utils/logger');
     logger.warn('Password reset token generated', {
       adminId: admin._id,
       email: admin.email,
-      // Token is logged so a server operator can retrieve it without email infra.
-      // Rotate JWT_SECRET if logs are ever compromised.
-      resetToken: rawToken,
     });
 
     const payload = { success: true, message: 'If that email exists, a reset token has been sent.' };
@@ -121,6 +116,7 @@ router.post('/reset-password', async (req, res, next) => {
     }
 
     admin.passwordHash = await bcrypt.hash(newPassword, 12);
+    admin.passwordChangedAt = new Date();
     admin.resetToken = null;
     admin.resetTokenExpiry = null;
     await admin.save();

@@ -106,7 +106,10 @@ router.put('/users/:id', isSuperAdmin, async (req, res, next) => {
     if (email    !== undefined) update.email    = email;
     if (role     !== undefined) update.role     = role;
     if (isActive !== undefined) update.isActive = isActive;
-    if (password) update.passwordHash = await bcrypt.hash(password, 12);
+    if (password) {
+      update.passwordHash = await bcrypt.hash(password, 12);
+      update.passwordChangedAt = new Date();
+    }
 
     const user = await AdminUser.findByIdAndUpdate(req.params.id, update, { new: true }).select('-passwordHash');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
@@ -207,6 +210,86 @@ router.get('/transactions', async (req, res, next) => {
     res.json({ success: true, data: transactions, total, page: Number(page) });
   } catch (err) {
     next(err);
+  }
+});
+
+// ── Sessions CSV export ───────────────────────────────────────────────────────
+
+router.get('/sessions/export', async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const filter = status ? { status } : {};
+    const sessions = await Session.find(filter)
+      .populate('bundleId', 'name price')
+      .populate('operatorId', 'name shortCode')
+      .sort({ createdAt: -1 })
+      .limit(5000);
+
+    const toCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Phone', 'Username', 'Bundle', 'Price (KES)', 'Operator', 'Status', 'Expires At', 'Created At'],
+      ...sessions.map((s) => [
+        s.phone || '',
+        s.username,
+        s.bundleId?.name || '',
+        s.bundleId?.price ?? '',
+        s.operatorId?.name || '',
+        s.status,
+        s.expiresAt ? new Date(s.expiresAt).toISOString() : '',
+        new Date(s.createdAt).toISOString(),
+      ]),
+    ];
+    const csv = rows.map((r) => r.map(toCsv).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="sessions-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Transactions CSV export ───────────────────────────────────────────────────
+
+router.get('/transactions/export', async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const filter = status ? { status } : {};
+    const txns = await Transaction.find(filter)
+      .populate('bundleId', 'name price')
+      .populate('operatorId', 'name shortCode')
+      .sort({ createdAt: -1 })
+      .limit(10000);
+
+    const toCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Date', 'Phone', 'Bundle', 'Amount (KES)', 'Receipt No.', 'Operator', 'Status'],
+      ...txns.map((t) => [
+        new Date(t.createdAt).toISOString(),
+        t.phone,
+        t.bundleId?.name || '',
+        t.amount,
+        t.mpesaReceiptNumber || '',
+        t.operatorId?.name || '',
+        t.status,
+      ]),
+    ];
+    const csv = rows.map((r) => r.map(toCsv).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="transactions-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── MikroTik health check ─────────────────────────────────────────────────────
+
+router.get('/health/mikrotik', async (req, res, next) => {
+  try {
+    const result = await testConnection(null);
+    res.json({ success: true, ok: true, identity: result.identity });
+  } catch (err) {
+    res.json({ success: true, ok: false, message: err.message });
   }
 });
 

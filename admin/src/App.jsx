@@ -34,6 +34,9 @@ function OperatorRoute({ children }) {
 
 export default function App() {
   return (
+    <>
+    {/* Hidden area used for voucher print sheets */}
+    <div id="voucher-print-area" />
     <Routes>
       <Route path="/login" element={<Login />} />
       {/* Operator self-service portal — separate auth, no admin Layout */}
@@ -65,5 +68,6 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { useLang } from '../context/LangContext';
 
 const formatMeta = (b) => {
   if (b.durationMinutes) {
@@ -35,6 +36,7 @@ const formatPhoneInput = (value) => {
 };
 
 export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiated, onBack }) {
+  const { t } = useLang();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,7 +47,7 @@ export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiate
 
     const clean = normalizePhone(phone);
     if (!/^(07|01)\d{8}$/.test(clean)) {
-      setError('Enter a valid Kenyan number e.g. 0712 345 678');
+      setError(t.invalidPhone);
       return;
     }
 
@@ -76,17 +78,17 @@ export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiate
       </div>
 
       <div className="info-card">
-        <div className="info-card-title">Quick heads-up</div>
-        <p>The M-Pesa prompt will be sent to the number you enter below. Confirm with your PIN and stay on this page while we activate access.</p>
+        <div className="info-card-title">{t.quickHeadsUp}</div>
+        <p>{t.mpesaInfo}</p>
       </div>
 
-      <div className="section-label">M-Pesa number</div>
+      <div className="section-label">{t.mpesaNumber}</div>
 
       <div className="phone-wrap">
         <div className="phone-prefix">🇰🇪 +254</div>
         <input
           type="tel"
-          placeholder="712 345 678"
+          placeholder={t.phonePlaceholder}
           value={phone}
           onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
           autoFocus
@@ -95,14 +97,14 @@ export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiate
         />
       </div>
 
-      <p className="field-hint">Use the number that should receive the STK push prompt.</p>
+      <p className="field-hint">{t.phoneHint}</p>
 
       {error && <p className="error-msg">{error}</p>}
 
       <button className="btn-pay" type="submit" disabled={loading}>
-        {loading ? 'Sending prompt…' : `Pay KES ${bundle.price} via M-Pesa`}
+        {loading ? t.sendingPrompt : t.payBtn(bundle.price)}
       </button>
-      <button type="button" className="btn-back" onClick={onBack}>← Back to plans</button>
+      <button type="button" className="btn-back" onClick={onBack}>{t.backToPlans}</button>
     </form>
   );
 }

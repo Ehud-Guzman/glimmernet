@@ -12,5 +12,6 @@ const AdminLogSchema = new mongoose.Schema({
 
 AdminLogSchema.index({ createdAt: -1 });
 AdminLogSchema.index({ actor: 1, createdAt: -1 });
+AdminLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7776000 }); // 90 days
 
 module.exports = mongoose.model('AdminLog', AdminLogSchema);
