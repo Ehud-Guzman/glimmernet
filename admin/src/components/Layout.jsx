@@ -167,7 +167,7 @@ const PAGE_INFO = {
 };
 
 // ── Page info banner ──────────────────────────────────────────────────────────
-function PageInfoBanner({ infoKey, onDismiss }) {
+function PageInfoBanner({ infoKey, onDismiss, autoClose = true }) {
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef(null);
 
@@ -177,9 +177,10 @@ function PageInfoBanner({ infoKey, onDismiss }) {
   }, [onDismiss]);
 
   useEffect(() => {
+    if (!autoClose) return;
     timerRef.current = setTimeout(dismiss, BANNER_TTL);
     return () => clearTimeout(timerRef.current);
-  }, [dismiss]);
+  }, [dismiss, autoClose]);
 
   const info = PAGE_INFO[infoKey];
   if (!info) return null;
@@ -199,14 +200,16 @@ function PageInfoBanner({ infoKey, onDismiss }) {
       overflow: 'hidden',
       position: 'relative',
     }}>
-      {/* Progress bar */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0,
-        height: 2, background: 'var(--accent)',
-        borderRadius: '0 0 0 8px',
-        animation: `bannerProgress ${BANNER_TTL}ms linear forwards`,
-        opacity: 0.5,
-      }} />
+      {/* Progress bar — only shown when auto-closing */}
+      {autoClose && (
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0,
+          height: 2, background: 'var(--accent)',
+          borderRadius: '0 0 0 8px',
+          animation: `bannerProgress ${BANNER_TTL}ms linear forwards`,
+          opacity: 0.5,
+        }} />
+      )}
 
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem' }}>
@@ -279,7 +282,8 @@ export default function Layout({ children }) {
   const [pendingCount, setPendingCount] = useState(0);
 
   // Banner state: null = not shown, string = shown for this key
-  const [bannerKey, setBannerKey] = useState(null);
+  const [bannerKey, setBannerKey]     = useState(null);
+  const [bannerManual, setBannerManual] = useState(false);
   // Track which routes have been dismissed in this session
   const dismissedRef = useRef(new Set());
 
@@ -295,13 +299,15 @@ export default function Layout({ children }) {
     });
   };
 
-  // Show banner when route changes (once per route per session)
+  // Show banner automatically on route change (once per route per session)
   useEffect(() => {
     const key = ROUTE_MAP[location.pathname];
     if (key && !dismissedRef.current.has(location.pathname)) {
       setBannerKey(key);
+      setBannerManual(false);
     } else {
       setBannerKey(null);
+      setBannerManual(false);
     }
   }, [location.pathname]);
 
@@ -313,7 +319,10 @@ export default function Layout({ children }) {
   const reopenBanner = () => {
     dismissedRef.current.delete(location.pathname);
     const key = ROUTE_MAP[location.pathname];
-    if (key) setBannerKey(key);
+    if (key) {
+      setBannerKey(key);
+      setBannerManual(true); // manually opened — no auto-close
+    }
   };
 
   // Router health
@@ -468,7 +477,7 @@ export default function Layout({ children }) {
       <main className="main">
         {/* Page info banner */}
         {bannerKey && (
-          <PageInfoBanner key={bannerKey} infoKey={bannerKey} onDismiss={dismissBanner} />
+          <PageInfoBanner key={bannerKey} infoKey={bannerKey} onDismiss={dismissBanner} autoClose={!bannerManual} />
         )}
 
         {/* Re-open pill — shown after banner is dismissed */}
