@@ -515,6 +515,50 @@ router.put('/operators/:id', isSuperAdmin, validate(schemas.operatorUpdate), asy
   }
 });
 
+router.delete('/operators/:id', isSuperAdmin, async (req, res, next) => {
+  try {
+    const op = await Operator.findById(req.params.id);
+    if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });
+
+    const [activeSessions, pendingSettlements] = await Promise.all([
+      Session.countDocuments({ operatorId: op._id, status: 'ACTIVE' }),
+      Settlement.countDocuments({ operatorId: op._id, status: { $in: ['PENDING', 'PROCESSING'] } }),
+    ]);
+
+    if (activeSessions > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete: ${activeSessions} active session(s) still running under this operator.`,
+      });
+    }
+    if (op.walletBalance > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete: operator has an unsettled wallet balance of KES ${op.walletBalance}. Settle or zero it first.`,
+      });
+    }
+    if (pendingSettlements > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete: ${pendingSettlements} settlement(s) are still pending/processing for this operator.`,
+      });
+    }
+
+    // Deactivate bundles so they no longer appear on the portal (historical transactions keep the reference)
+    await Bundle.updateMany({ operatorId: op._id }, { isActive: false });
+    await op.deleteOne();
+
+    await audit({
+      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'OPERATOR_DELETED', targetModel: 'Operator', targetId: op._id,
+      meta: { shortCode: op.shortCode, name: op.name },
+    });
+    res.json({ success: true, message: `Operator "${op.name}" deleted. Their bundles have been deactivated.` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next) => {
   try {
     const op = await Operator.findById(req.params.id);
