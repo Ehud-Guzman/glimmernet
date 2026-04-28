@@ -127,6 +127,9 @@ export default function Operators() {
   const [settleForm, setSettleForm] = useState({ amount: '', method: 'B2C', notes: '' });
   const [settleError, setSettleError] = useState('');
   const [settleLoading, setSettleLoading] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const globalFeePercent = parseFloat(import.meta.env.VITE_PLATFORM_FEE_PERCENT || '5');
   const isCreate = modal === 'create';
@@ -222,6 +225,18 @@ export default function Operators() {
   };
 
   const effectiveFee = (op) => op.platformFeePercent !== null ? op.platformFeePercent : globalFeePercent;
+
+  const handleDelete = async () => {
+    setDeleteLoading(true); setDeleteError('');
+    try {
+      await client.delete(`/admin/operators/${deleting._id}`);
+      setDeleting(null); load();
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || 'Delete failed.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const handleApprove = async (id) => {
     try {
@@ -428,6 +443,11 @@ export default function Operators() {
                     style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
                     onClick={() => openEdit(op)}>
                     Edit
+                  </button>
+                  <button className="btn btn-ghost"
+                    style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem', color: 'var(--red)' }}
+                    onClick={() => { setDeleteError(''); setDeleting(op); }}>
+                    Delete
                   </button>
                 </div>
               </div>
