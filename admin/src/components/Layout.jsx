@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { isSuperAdmin, getName, clearAuth } from '../utils/auth';
 import { getTheme, toggleTheme } from '../utils/theme';
 import client from '../api/client';
 
 const MIKROTIK_POLL = 60_000;
 const SETTLE_POLL   = 5 * 60_000;
+const BANNER_TTL    = 7_000; // auto-dismiss after 7 s
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const Icon = ({ d, size = 16 }) => (
@@ -35,241 +36,239 @@ const ICONS = {
   chevronLeft:  ['M15 18l-6-6 6-6'],
   chevronRight: ['M9 18l6-6-6-6'],
   close:        ['M18 6L6 18', 'M6 6l12 12'],
-  info:         ['M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z', 'M12 8h.01', 'M11 12h1v4h1'],
 };
 
-// ── Section info content ───────────────────────────────────────────────────────
-const NAV_INFO = {
+// ── Route → info mapping ──────────────────────────────────────────────────────
+const ROUTE_MAP = {
+  '/':            'dashboard',
+  '/sessions':    'sessions',
+  '/transactions':'transactions',
+  '/bundles':     'bundles',
+  '/vouchers':    'vouchers',
+  '/analytics':   'analytics',
+  '/operators':   'operators',
+  '/settlements': 'settlements',
+  '/users':       'users',
+  '/audit-logs':  'auditLogs',
+  '/settings':    'settings',
+};
+
+const PAGE_INFO = {
   dashboard: {
     title: 'Dashboard',
-    desc:  'Your system at a glance — live metrics, revenue summary, and quick links to every section.',
+    icon:  'dashboard',
+    desc:  'Your system at a glance — live session count, revenue today, and quick links to every section.',
     points: [
-      'Real-time active session count and today\'s revenue',
+      'Real-time active sessions and today\'s revenue update every 30 s',
       'Pending settlement alerts with a direct action link',
-      'Quick access cards to all major sections',
+      'Quick-access cards to all major sections of the platform',
     ],
   },
   sessions: {
     title: 'Sessions',
+    icon:  'sessions',
     desc:  'View and control every WiFi connection on your network, past and present.',
     points: [
-      'See all active sessions with MAC address and duration',
-      'Manually grant access to a device for any bundle',
-      'Terminate a live session immediately from the table',
+      'See all active sessions filtered by MAC address, operator, or bundle',
+      'Manually grant access to any device using an existing bundle',
+      'Terminate a live session immediately — it disconnects from MikroTik instantly',
     ],
   },
   transactions: {
     title: 'Transactions',
-    desc:  'Full log of every payment processed through M-Pesa on this platform.',
+    icon:  'transactions',
+    desc:  'Full log of every M-Pesa payment processed through this platform.',
     points: [
-      'Filter by date range, status (paid / failed), or operator',
-      'Export transaction history to CSV for accounting',
-      'Track pending or failed M-Pesa STK push payments',
+      'Filter by date range, payment status (paid / failed / pending), or operator',
+      'Export any filtered view to CSV for accounting or reconciliation',
+      'Failed STK push payments are flagged so you can follow up with the customer',
     ],
   },
   bundles: {
     title: 'Bundles',
-    desc:  'Define the WiFi packages available for customers to buy.',
+    icon:  'bundles',
+    desc:  'Define the WiFi packages that customers can purchase on the portal.',
     points: [
-      'Set price, duration, and data cap per package',
-      'Toggle bundles active or inactive without deleting',
-      'Bundles can be scoped to specific operators',
+      'Set price (KES), duration in minutes, and optional data cap per package',
+      'Toggle a bundle inactive without deleting it — it stops appearing on the portal',
+      'Bundles deleted here are soft-removed; existing sessions are unaffected',
     ],
   },
   vouchers: {
     title: 'Vouchers',
+    icon:  'vouchers',
     desc:  'Generate single-use codes that grant instant WiFi access without M-Pesa.',
     points: [
-      'Bulk-generate codes linked to any bundle',
-      'Print or export code lists for distribution',
-      'Revoke unused vouchers at any time',
+      'Bulk-generate codes tied to any existing bundle in one click',
+      'Print or export the code list as CSV for physical distribution',
+      'Revoke any unused voucher at any time to prevent misuse',
     ],
   },
   analytics: {
     title: 'Analytics',
-    desc:  'Visual charts and trends across the entire platform for the last 30 days.',
+    icon:  'analytics',
+    desc:  'Visual charts and trend reports across the entire platform for the last 30 days.',
     points: [
-      'Daily revenue bar chart and bundle distribution pie',
-      'Hourly transaction heatmap to spot peak hours',
-      'Per-operator performance comparison table',
+      'Daily revenue bar chart and bundle distribution pie chart',
+      'Hourly transaction heatmap to identify your busiest times',
+      'Per-operator performance table to compare revenue contribution',
     ],
   },
   operators: {
     title: 'Operators',
+    icon:  'operators',
     desc:  'Manage the hotspot business owners connected to your platform.',
     points: [
-      'Approve pending operator sign-up requests',
-      'Suspend or reactivate an operator account',
-      'View per-operator revenue and wallet balance',
+      'Approve pending sign-up requests or suspend active accounts',
+      'View each operator\'s revenue, wallet balance, and session count',
+      'Edit credentials, branding name, or short code for any operator',
     ],
   },
   settlements: {
     title: 'Settlements',
-    desc:  'Process payout requests from operators and track what has been paid.',
+    icon:  'settlements',
+    desc:  'Process operator payout requests and track what has been paid.',
     points: [
-      'Review pending payout amounts per operator',
-      'Mark a settlement as paid with the M-Pesa reference',
-      'Full settlement history with timestamps',
+      'Review pending payout amounts calculated from collected revenue minus platform fee',
+      'Mark a settlement as paid and attach the M-Pesa transaction reference',
+      'Full settlement history with timestamps available per operator',
     ],
   },
   users: {
     title: 'Admin Users',
-    desc:  'Control who can log into this admin dashboard and what they can do.',
+    icon:  'users',
+    desc:  'Control who can log into this admin dashboard and what they can access.',
     points: [
-      'Create new admin accounts with name, email and password',
-      'Assign role: admin (limited) or superadmin (full access)',
-      'Deactivate accounts without deleting their history',
+      'Create new admin accounts with name, email, and a temporary password',
+      'Assign role: admin (management access) or superadmin (full platform access)',
+      'Deactivate an account instantly without losing its audit history',
     ],
   },
   auditLogs: {
     title: 'Audit Logs',
-    desc:  'An immutable record of every action performed by admins and operators.',
+    icon:  'auditLogs',
+    desc:  'An immutable trail of every action performed by admins and operators.',
     points: [
-      'Filter by action type (e.g. BUNDLE_CREATED, SESSION_GRANTED)',
-      'See who did what and when, with metadata',
-      'Logs are retained for 90 days automatically',
+      'Filter by action type — e.g. BUNDLE_CREATED, SESSION_TERMINATED, SETTLEMENT_MARKED_PAID',
+      'Each entry records who did it, when, and on which resource',
+      'Logs are retained automatically for 90 days then purged',
     ],
   },
   settings: {
     title: 'Settings',
-    desc:  'Configure platform-wide integration credentials and behaviour.',
+    icon:  'settings',
+    desc:  'Configure platform-wide credentials and operational behaviour.',
     points: [
-      'M-Pesa / Daraja API keys and short code',
-      'MikroTik router connection details',
-      'Platform fee rate and allowed CORS origins',
+      'M-Pesa / Daraja API keys, short code, and passkey for STK push',
+      'MikroTik router IP, port, and credentials for session provisioning',
+      'Platform fee percentage and allowed CORS origins for the portal',
     ],
   },
 };
 
-// ── Info popover (fixed, appears to the right of the sidebar) ─────────────────
-function InfoPopover({ infoKey, anchorRect, sidebarWidth, onClose }) {
-  const ref = useRef(null);
+// ── Page info banner ──────────────────────────────────────────────────────────
+function PageInfoBanner({ infoKey, onDismiss }) {
+  const [exiting, setExiting] = useState(false);
+  const timerRef = useRef(null);
+
+  const dismiss = useCallback(() => {
+    setExiting(true);
+    setTimeout(onDismiss, 280);
+  }, [onDismiss]);
 
   useEffect(() => {
-    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
-    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    document.addEventListener('keydown', handleKey);
-    document.addEventListener('mousedown', handleClick);
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      document.removeEventListener('mousedown', handleClick);
-    };
-  }, [onClose]);
+    timerRef.current = setTimeout(dismiss, BANNER_TTL);
+    return () => clearTimeout(timerRef.current);
+  }, [dismiss]);
 
-  const info = NAV_INFO[infoKey];
-  if (!info || !anchorRect) return null;
-
-  // Position to the right of the sidebar, vertically centred on the anchor
-  const left = sidebarWidth + 10;
-  const cardHeight = 190;
-  const top  = Math.min(
-    Math.max(8, anchorRect.top + anchorRect.height / 2 - cardHeight / 2),
-    window.innerHeight - cardHeight - 8
-  );
+  const info = PAGE_INFO[infoKey];
+  if (!info) return null;
 
   return (
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        left,
-        top,
-        width: 270,
-        zIndex: 2000,
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRadius: '14px',
-        boxShadow: 'var(--shadow-lg)',
-        padding: '1.1rem 1.2rem',
-        animation: 'fadeSlideIn 0.15s ease',
-      }}
-    >
-      {/* Arrow pointing left */}
+    <div style={{
+      marginBottom: '1.5rem',
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderLeft: '4px solid var(--accent)',
+      borderRadius: '12px',
+      padding: '1rem 1.1rem',
+      boxShadow: 'var(--shadow)',
+      animation: exiting
+        ? 'bannerOut 0.28s ease forwards'
+        : 'bannerIn 0.25s ease',
+      overflow: 'hidden',
+      position: 'relative',
+    }}>
+      {/* Progress bar */}
       <div style={{
-        position: 'absolute',
-        left: -7,
-        top: cardHeight / 2 - 7,
-        width: 14,
-        height: 14,
-        background: 'var(--surface)',
-        border: '1px solid var(--border)',
-        borderRight: 'none',
-        borderTop: 'none',
-        transform: 'rotate(45deg)',
+        position: 'absolute', bottom: 0, left: 0,
+        height: 2, background: 'var(--accent)',
+        borderRadius: '0 0 0 8px',
+        animation: `bannerProgress ${BANNER_TTL}ms linear forwards`,
+        opacity: 0.5,
       }} />
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Icon d={ICONS[infoKey]} size={15} />
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text)' }}>{info.title}</span>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent)' }}>
+          <Icon d={ICONS[info.icon]} size={15} />
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text)' }}>{info.title}</span>
         </div>
         <button
-          onClick={onClose}
+          onClick={dismiss}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-3)', padding: '2px', borderRadius: '4px',
-            display: 'flex', alignItems: 'center',
+            color: 'var(--text-3)', padding: '2px 4px', borderRadius: '4px',
+            display: 'flex', alignItems: 'center', lineHeight: 0,
+            transition: 'color 0.14s',
           }}
+          title="Dismiss"
         >
           <Icon d={ICONS.close} size={13} />
         </button>
       </div>
 
       {/* Description */}
-      <p style={{ fontSize: '0.77rem', color: 'var(--text-2)', lineHeight: 1.55, marginBottom: '0.75rem' }}>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-2)', lineHeight: 1.55, marginBottom: '0.65rem' }}>
         {info.desc}
       </p>
 
       {/* Bullet points */}
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
         {info.points.map((pt, i) => (
-          <li key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+          <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
             <span style={{
-              marginTop: '0.3rem', width: 5, height: 5, borderRadius: '50%',
-              background: 'var(--accent)', flexShrink: 0,
+              marginTop: '0.35rem', width: 5, height: 5, borderRadius: '50%',
+              background: 'var(--accent)', flexShrink: 0, opacity: 0.7,
             }} />
-            <span style={{ fontSize: '0.74rem', color: 'var(--text-3)', lineHeight: 1.5 }}>{pt}</span>
-          </li>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-3)', lineHeight: 1.5 }}>{pt}</span>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
 
 // ── Nav item ──────────────────────────────────────────────────────────────────
-function NavItem({ to, end, icon, label, onClick, badge, onInfo }) {
-  return (
-    <div className="nav-item-wrap">
-      <NavLink
-        to={to}
-        end={end}
-        title={label}
-        data-badge={badge ? 'true' : undefined}
-        className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-        onClick={onClick}
-      >
-        <Icon d={ICONS[icon]} />
-        <span>{label}</span>
-        {badge && <span className="nav-badge">{badge > 99 ? '99+' : badge}</span>}
-      </NavLink>
-      {onInfo && (
-        <button
-          className="nav-info-btn"
-          onClick={(e) => { e.stopPropagation(); onInfo(e, icon); }}
-          title={`About ${label}`}
-          tabIndex={-1}
-        >
-          <Icon d={ICONS.info} size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
+const NavItem = ({ to, end, icon, label, onClick, badge }) => (
+  <NavLink
+    to={to}
+    end={end}
+    title={label}
+    data-badge={badge ? 'true' : undefined}
+    className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+    onClick={onClick}
+  >
+    <Icon d={ICONS[icon]} />
+    <span>{label}</span>
+    {badge && <span className="nav-badge">{badge > 99 ? '99+' : badge}</span>}
+  </NavLink>
+);
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 export default function Layout({ children }) {
   const navigate   = useNavigate();
+  const location   = useLocation();
   const superAdmin = isSuperAdmin();
   const name       = getName();
 
@@ -278,13 +277,15 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed]       = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   const [mikrotikStatus, setMikrotikStatus] = useState(null);
   const [pendingCount, setPendingCount] = useState(0);
-  const [popover, setPopover]           = useState(null); // { key, rect }
-  const sidebarRef                      = useRef(null);
+
+  // Banner state: null = not shown, string = shown for this key
+  const [bannerKey, setBannerKey] = useState(null);
+  // Track which routes have been dismissed in this session
+  const dismissedRef = useRef(new Set());
 
   const handleToggle = () => { const next = toggleTheme(); setTheme(next); };
   const logout       = () => { clearAuth(); navigate('/login'); };
   const closeSidebar = () => setSidebarOpen(false);
-  const closePopover = useCallback(() => setPopover(null), []);
 
   const toggleCollapse = () => {
     setCollapsed((c) => {
@@ -294,10 +295,26 @@ export default function Layout({ children }) {
     });
   };
 
-  const handleInfo = useCallback((e, key) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setPopover((prev) => prev?.key === key ? null : { key, rect });
-  }, []);
+  // Show banner when route changes (once per route per session)
+  useEffect(() => {
+    const key = ROUTE_MAP[location.pathname];
+    if (key && !dismissedRef.current.has(location.pathname)) {
+      setBannerKey(key);
+    } else {
+      setBannerKey(null);
+    }
+  }, [location.pathname]);
+
+  const dismissBanner = useCallback(() => {
+    dismissedRef.current.add(location.pathname);
+    setBannerKey(null);
+  }, [location.pathname]);
+
+  const reopenBanner = () => {
+    dismissedRef.current.delete(location.pathname);
+    const key = ROUTE_MAP[location.pathname];
+    if (key) setBannerKey(key);
+  };
 
   // Router health
   useEffect(() => {
@@ -311,7 +328,7 @@ export default function Layout({ children }) {
     return () => clearInterval(id);
   }, []);
 
-  // Pending settlements badge (superadmin only)
+  // Pending settlements badge
   useEffect(() => {
     if (!superAdmin) return;
     const check = () => {
@@ -327,14 +344,9 @@ export default function Layout({ children }) {
     return () => clearInterval(id);
   }, [superAdmin]);
 
-  // Close popover on navigation
-  useEffect(() => { setPopover(null); }, []);
-
   const initials = name
     ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
     : '??';
-
-  const sidebarWidth = collapsed ? 68 : 248;
 
   const sidebarClass = [
     'sidebar',
@@ -342,48 +354,22 @@ export default function Layout({ children }) {
     collapsed   ? 'sidebar--collapsed' : '',
   ].filter(Boolean).join(' ');
 
-  // Only show info buttons in expanded state (collapsed uses title tooltip)
-  const infoHandler = collapsed ? undefined : handleInfo;
+  const showReopenPill = !bannerKey && !!ROUTE_MAP[location.pathname];
 
   return (
     <div className="layout">
-      {/* Keyframe for popover animation */}
       <style>{`
-        @keyframes fadeSlideIn {
-          from { opacity: 0; transform: translateX(-6px); }
-          to   { opacity: 1; transform: translateX(0); }
+        @keyframes bannerIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        .nav-item-wrap {
-          position: relative;
-          display: flex;
-          align-items: center;
+        @keyframes bannerOut {
+          from { opacity: 1; transform: translateY(0); max-height: 200px; }
+          to   { opacity: 0; transform: translateY(-6px); max-height: 0; padding: 0; margin: 0; }
         }
-        .nav-item-wrap .nav-info-btn {
-          position: absolute;
-          right: 6px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: rgba(255,255,255,0.25);
-          padding: 3px;
-          border-radius: 4px;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          transition: color 0.14s, background 0.14s;
-          line-height: 0;
-        }
-        .nav-item-wrap:hover .nav-info-btn {
-          display: flex;
-        }
-        .nav-item-wrap .nav-info-btn:hover {
-          color: rgba(255,255,255,0.75);
-          background: rgba(255,255,255,0.08);
-        }
-        .nav-item-wrap .nav-item {
-          flex: 1;
+        @keyframes bannerProgress {
+          from { width: 100%; }
+          to   { width: 0%; }
         }
       `}</style>
 
@@ -400,8 +386,7 @@ export default function Layout({ children }) {
 
       {sidebarOpen && <div className="sidebar-overlay" onClick={closeSidebar} />}
 
-      <aside className={sidebarClass} ref={sidebarRef}>
-
+      <aside className={sidebarClass}>
         {/* Brand */}
         <div className="sidebar-brand">
           {!collapsed && (
@@ -427,23 +412,23 @@ export default function Layout({ children }) {
         {/* Primary nav */}
         <nav className="sidebar-nav">
           <div className="sidebar-section-label">Management</div>
-          <NavItem to="/"            end icon="dashboard"    label="Dashboard"    onClick={closeSidebar} onInfo={infoHandler} />
-          <NavItem to="/sessions"       icon="sessions"      label="Sessions"     onClick={closeSidebar} onInfo={infoHandler} />
-          <NavItem to="/transactions"   icon="transactions"  label="Transactions" onClick={closeSidebar} onInfo={infoHandler} />
-          <NavItem to="/bundles"        icon="bundles"       label="Bundles"      onClick={closeSidebar} onInfo={infoHandler} />
-          <NavItem to="/vouchers"       icon="vouchers"      label="Vouchers"     onClick={closeSidebar} onInfo={infoHandler} />
+          <NavItem to="/"            end icon="dashboard"    label="Dashboard"    onClick={closeSidebar} />
+          <NavItem to="/sessions"       icon="sessions"      label="Sessions"     onClick={closeSidebar} />
+          <NavItem to="/transactions"   icon="transactions"  label="Transactions" onClick={closeSidebar} />
+          <NavItem to="/bundles"        icon="bundles"       label="Bundles"      onClick={closeSidebar} />
+          <NavItem to="/vouchers"       icon="vouchers"      label="Vouchers"     onClick={closeSidebar} />
         </nav>
 
         {/* Superadmin nav */}
         {superAdmin && (
           <nav className="sidebar-nav">
             <div className="sidebar-section-label">Platform</div>
-            <NavItem to="/analytics"   icon="analytics"   label="Analytics"   onClick={closeSidebar} onInfo={infoHandler} />
-            <NavItem to="/operators"   icon="operators"   label="Operators"   onClick={closeSidebar} onInfo={infoHandler} />
-            <NavItem to="/settlements" icon="settlements" label="Settlements"  onClick={closeSidebar} onInfo={infoHandler} badge={pendingCount || undefined} />
-            <NavItem to="/users"       icon="users"       label="Admin Users" onClick={closeSidebar} onInfo={infoHandler} />
-            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"  onClick={closeSidebar} onInfo={infoHandler} />
-            <NavItem to="/settings"    icon="settings"    label="Settings"    onClick={closeSidebar} onInfo={infoHandler} />
+            <NavItem to="/analytics"   icon="analytics"   label="Analytics"   onClick={closeSidebar} />
+            <NavItem to="/operators"   icon="operators"   label="Operators"   onClick={closeSidebar} />
+            <NavItem to="/settlements" icon="settlements" label="Settlements"  onClick={closeSidebar} badge={pendingCount || undefined} />
+            <NavItem to="/users"       icon="users"       label="Admin Users" onClick={closeSidebar} />
+            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"  onClick={closeSidebar} />
+            <NavItem to="/settings"    icon="settings"    label="Settings"    onClick={closeSidebar} />
           </nav>
         )}
 
@@ -480,17 +465,40 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
-      {/* Info popover — rendered outside the sidebar so it's never clipped */}
-      {popover && (
-        <InfoPopover
-          infoKey={popover.key}
-          anchorRect={popover.rect}
-          sidebarWidth={sidebarWidth}
-          onClose={closePopover}
-        />
-      )}
+      <main className="main">
+        {/* Page info banner */}
+        {bannerKey && (
+          <PageInfoBanner key={bannerKey} infoKey={bannerKey} onDismiss={dismissBanner} />
+        )}
 
-      <main className="main">{children}</main>
+        {/* Re-open pill — shown after banner is dismissed */}
+        {showReopenPill && (
+          <button
+            onClick={reopenBanner}
+            title="Show page guide"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.35rem',
+              marginBottom: '1.25rem',
+              background: 'none',
+              border: '1px solid var(--border)',
+              borderRadius: '999px',
+              padding: '0.25rem 0.65rem',
+              fontSize: '0.7rem', fontWeight: 600,
+              color: 'var(--text-3)',
+              cursor: 'pointer',
+              transition: 'border-color 0.14s, color 0.14s',
+              width: 'fit-content',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-3)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+          >
+            <Icon d={ICONS.auditLogs} size={11} />
+            About this page
+          </button>
+        )}
+
+        {children}
+      </main>
     </div>
   );
 }
