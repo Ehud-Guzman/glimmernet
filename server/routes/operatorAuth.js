@@ -3,8 +3,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Operator = require('../models/Operator');
 const { protectOperator } = require('../middleware/operatorAuthMiddleware');
+const { sendSms, isConfigured } = require('../services/notificationService');
+const configService = require('../services/configService');
 const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -100,6 +103,7 @@ router.put('/password', protectOperator, async (req, res, next) => {
     }
 
     operator.passwordHash = await bcrypt.hash(newPassword, 12);
+    operator.passwordChangedAt = new Date();
     await operator.save();
     res.json({ success: true, message: 'Password updated successfully' });
   } catch (err) {
@@ -131,6 +135,18 @@ router.post('/signup', validate(schemas.operatorSignup), async (req, res, next) 
       shortCode,
       status: 'PENDING',
     });
+
+    // Notify admin of new signup — fire-and-forget
+    logger.warn('New operator signup pending approval', { name, ownerPhone, shortCode: op.shortCode });
+    isConfigured().then(async (smsReady) => {
+      if (!smsReady) return;
+      const adminPhone = await configService.get('admin_notification_phone', '');
+      if (!adminPhone) return;
+      sendSms({
+        to: adminPhone,
+        message: `GlimmerInk: New operator signup pending — ${name} (${ownerPhone}). Ref: ${op.shortCode}. Login to admin panel to approve.`,
+      }).catch(() => {});
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,

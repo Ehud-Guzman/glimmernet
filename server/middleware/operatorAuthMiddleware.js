@@ -20,6 +20,11 @@ const protectOperator = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Account is inactive or not found.' });
     }
 
+    // Invalidate tokens issued before the last password change
+    if (operator.passwordChangedAt && decoded.iat < Math.floor(operator.passwordChangedAt.getTime() / 1000)) {
+      return res.status(401).json({ success: false, message: 'Session expired after password change. Please log in again.' });
+    }
+
     req.operator = operator;
     next();
   } catch {

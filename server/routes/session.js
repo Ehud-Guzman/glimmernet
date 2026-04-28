@@ -166,7 +166,9 @@ router.post('/trial', async (req, res, next) => {
     });
     if (!trialBundle) {
       // Roll back the claimed slot — the failure is a config issue, not the user's fault.
-      await Device.updateOne({ macAddress: macUpper }, { $pull: { trialsUsed: operator._id } }).catch(() => {});
+      await Device.updateOne({ macAddress: macUpper }, { $pull: { trialsUsed: operator._id } }).catch((e) => {
+        logger.error('Trial slot rollback failed — user may lose future trial eligibility', { mac: macUpper, operatorId: operator._id, error: e.message });
+      });
       return res.status(400).json({
         success: false,
         message: 'Free trial is configured, but no active bundle/profile is available for access provisioning.',
@@ -187,7 +189,9 @@ router.post('/trial', async (req, res, next) => {
       });
     } catch (err) {
       // Roll back the claimed slot so the user can retry once the router is back.
-      await Device.updateOne({ macAddress: macUpper }, { $pull: { trialsUsed: operator._id } }).catch(() => {});
+      await Device.updateOne({ macAddress: macUpper }, { $pull: { trialsUsed: operator._id } }).catch((e) => {
+        logger.error('Trial slot rollback failed — user may lose future trial eligibility', { mac: macUpper, operatorId: operator._id, error: e.message });
+      });
       logger.error('Trial provisioning failed', { mac: macUpper, message: err.message });
       return res.status(503).json({
         success: false,

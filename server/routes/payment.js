@@ -10,6 +10,7 @@ const { sanitizePhone, createResumeToken, getNairobiHour } = require('../utils/h
 const { syncSessionState } = require('../services/sessionService');
 const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
+const darajaIpGuard = require('../middleware/darajaIpGuard');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -138,7 +139,7 @@ router.post('/initiate', validate(schemas.paymentInitiate), async (req, res, nex
 
 // ── M-Pesa STK callback ───────────────────────────────────────────────────────
 
-router.post('/callback', async (req, res, next) => {
+router.post('/callback', darajaIpGuard, async (req, res, next) => {
   res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
 
   try {
@@ -295,7 +296,7 @@ router.post('/verify', async (req, res, next) => {
 
 // ── Daraja B2C result callbacks ───────────────────────────────────────────────
 
-router.post('/b2c-callback', async (req, res) => {
+router.post('/b2c-callback', darajaIpGuard, async (req, res) => {
   res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
   try {
     await handleB2CCallback(req.body);
@@ -304,7 +305,7 @@ router.post('/b2c-callback', async (req, res) => {
   }
 });
 
-router.post('/b2c-timeout', async (req, res) => {
+router.post('/b2c-timeout', darajaIpGuard, async (req, res) => {
   res.status(200).json({ ResultCode: 0, ResultDesc: 'Accepted' });
   logger.warn('B2C timeout received', { body: req.body });
 });

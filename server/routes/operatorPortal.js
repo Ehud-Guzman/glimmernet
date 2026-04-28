@@ -132,8 +132,13 @@ router.get('/transactions', async (req, res, next) => {
 // GET /api/v1/operator/bundles
 router.get('/bundles', async (req, res, next) => {
   try {
-    const bundles = await Bundle.find({ operatorId: req.operator._id }).sort({ price: 1 }).select('-__v');
-    res.json({ success: true, data: bundles });
+    const { page = 1, limit = 50 } = req.query;
+    const filter = { operatorId: req.operator._id };
+    const [bundles, total] = await Promise.all([
+      Bundle.find(filter).sort({ price: 1 }).skip((Number(page) - 1) * clampLimit(limit, 200)).limit(clampLimit(limit, 200)).select('-__v'),
+      Bundle.countDocuments(filter),
+    ]);
+    res.json({ success: true, data: bundles, total, page: Number(page) });
   } catch (err) {
     next(err);
   }
@@ -223,6 +228,7 @@ router.put('/profile', validate(schemas.operatorProfileUpdate), async (req, res,
 
     if (updates.portalPassword) {
       updates.passwordHash = await bcrypt.hash(updates.portalPassword, 12);
+      updates.passwordChangedAt = new Date();
       delete updates.portalPassword;
     }
 
@@ -315,9 +321,10 @@ router.get('/analytics', async (req, res, next) => {
   try {
     const opId = req.operator._id;
     const days = Math.min(Number(req.query.days) || 30, 90);
-    const since = new Date();
+    // Anchor to midnight Nairobi time so the gap-fill keys match the aggregation timezone.
+    const todayNairobiStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+    const since = new Date(`${todayNairobiStr}T00:00:00+03:00`);
     since.setDate(since.getDate() - days + 1);
-    since.setHours(0, 0, 0, 0);
 
     const [dailyRevenue, topBundles] = await Promise.all([
       Transaction.aggregate([
@@ -346,7 +353,11 @@ router.get('/analytics', async (req, res, next) => {
       ]),
     ]);
 
-    // Fill gaps so every day has an entry
+    // Fill gaps so every day has an entry.
+    // Keys use Nairobi timezone to match the aggregation grouping.
+    const toNairobiDateKey = (d) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(d);
+
     const map = {};
     dailyRevenue.forEach(({ _id, revenue, count }) => {
       const key = `${_id.year}-${String(_id.month).padStart(2, '0')}-${String(_id.day).padStart(2, '0')}`;
@@ -355,9 +366,8 @@ router.get('/analytics', async (req, res, next) => {
 
     const filled = [];
     for (let i = 0; i < days; i++) {
-      const d = new Date(since);
-      d.setDate(since.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
+      const d = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+      const key = toNairobiDateKey(d);
       filled.push({ date: key, revenue: map[key]?.revenue || 0, count: map[key]?.count || 0 });
     }
 

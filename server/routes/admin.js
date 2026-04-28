@@ -173,7 +173,7 @@ router.post('/sessions/grant', validate(schemas.sessionGrant), async (req, res, 
   }
 });
 
-router.delete('/session/:id', async (req, res, next) => {
+router.delete('/sessions/:id', async (req, res, next) => {
   try {
     const session = await Session.findById(req.params.id).populate('operatorId');
     if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
@@ -297,9 +297,13 @@ router.get('/health/mikrotik', async (req, res, next) => {
 
 router.get('/bundles', async (req, res, next) => {
   try {
-    const filter = { operatorId: req.query.operatorId || null };
-    const bundles = await Bundle.find(filter).sort({ price: 1 });
-    res.json({ success: true, data: bundles });
+    const { operatorId, page = 1, limit = 50 } = req.query;
+    const filter = operatorId ? { operatorId } : {};
+    const [bundles, total] = await Promise.all([
+      Bundle.find(filter).sort({ price: 1 }).skip((Number(page) - 1) * clampLimit(limit, 200)).limit(clampLimit(limit, 200)),
+      Bundle.countDocuments(filter),
+    ]);
+    res.json({ success: true, data: bundles, total, page: Number(page) });
   } catch (err) {
     next(err);
   }
@@ -496,6 +500,7 @@ router.put('/operators/:id', isSuperAdmin, validate(schemas.operatorUpdate), asy
     const { portalPassword, ...rest } = req.body;
     if (portalPassword) {
       rest.passwordHash = await bcrypt.hash(portalPassword, 12);
+      rest.passwordChangedAt = new Date();
     }
     const op = await Operator.findByIdAndUpdate(req.params.id, rest, { new: true, runValidators: true });
     if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });

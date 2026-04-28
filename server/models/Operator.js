@@ -16,6 +16,7 @@ const OperatorSchema = new mongoose.Schema({
   email: { type: String, default: '' },
   // Self-service portal login (set via admin or POST /api/v1/operator/auth/set-password)
   passwordHash: { type: String, default: null },
+  passwordChangedAt: { type: Date, default: null },
   status: {
     type: String,
     enum: ['PENDING', 'ACTIVE', 'SUSPENDED'],
