@@ -788,6 +788,49 @@ export default function Operators() {
         </div>
       )}
 
+      {/* ── Delete Confirmation Modal ── */}
+      {deleting && (
+        <div className="modal-overlay" onClick={() => !deleteLoading && setDeleting(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, padding: 0 }}>
+            <div style={{ padding: '1.4rem 1.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--red)' }}>Delete Operator</h3>
+                <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-3)' }}>
+                  This cannot be undone.
+                </p>
+              </div>
+              <button type="button" onClick={() => setDeleting(null)} disabled={deleteLoading}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--text-3)', lineHeight: 1, padding: '0.1rem 0.25rem', marginLeft: '1rem' }}>
+                ×
+              </button>
+            </div>
+            <div style={{ padding: '1.25rem 1.75rem' }}>
+              <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--text-2)', lineHeight: 1.6 }}>
+                Delete <strong>{deleting.name}</strong> (<code>{deleting.shortCode}</code>)?
+                Their bundles will be deactivated. Transactions and sessions are kept as historical records.
+              </p>
+              {deleteError && (
+                <div style={{
+                  padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem',
+                  background: 'var(--red-dim)', border: '1px solid #fca5a544',
+                  fontSize: '0.85rem', color: 'var(--red)', lineHeight: 1.5,
+                }}>
+                  {deleteError}
+                </div>
+              )}
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setDeleting(null)} disabled={deleteLoading}>Cancel</button>
+                <button type="button" className="btn btn-primary"
+                  style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
+                  disabled={deleteLoading} onClick={handleDelete}>
+                  {deleteLoading ? 'Deleting…' : 'Yes, delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Settle Operator Modal ── */}
       {settling && (
         <div className="modal-overlay" onClick={() => setSettling(null)}>
