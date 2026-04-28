@@ -4,7 +4,8 @@ import { isSuperAdmin, getName, clearAuth } from '../utils/auth';
 import { getTheme, toggleTheme } from '../utils/theme';
 import client from '../api/client';
 
-const MIKROTIK_POLL = 60_000;
+const MIKROTIK_POLL  = 60_000;
+const SETTLE_POLL    = 5 * 60_000; // check pending settlements every 5 min
 
 // ── Icons ────────────────────────────────────────────────────────────────────
 const Icon = ({ d, size = 16 }) => (
@@ -22,7 +23,8 @@ const ICONS = {
   bundles:      ['M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z', 'M3.27 6.96L12 12.01l8.73-5.05', 'M12 22.08V12'],
   vouchers:     ['M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7', 'M22 7H2v5h20V7z', 'M12 22V7', 'M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z', 'M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z'],
   analytics:    ['M18 20V10', 'M12 20V4', 'M6 20v-6'],
-  operators:    ['M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 22V12h6v10'],
+  // fixed: was using the house/dashboard path — now uses the correct people icon
+  operators:    ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
   settlements:  ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'],
   users:        ['M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M23 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
   auditLogs:    ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8'],
@@ -31,33 +33,51 @@ const ICONS = {
   sun:          ['M12 5V3', 'M12 21v-2', 'M4.22 4.22l1.42 1.42', 'M18.36 18.36l1.42 1.42', 'M3 12H1', 'M23 12h-2', 'M4.22 19.78l1.42-1.42', 'M18.36 5.64l1.42-1.42', 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z'],
   moon:         'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z',
   wifi:         ['M5 12.55a11 11 0 0 1 14.08 0', 'M1.42 9a16 16 0 0 1 21.16 0', 'M8.53 16.11a6 6 0 0 1 6.95 0', 'M12 20h.01'],
+  chevronLeft:  ['M15 18l-6-6 6-6'],
+  chevronRight: ['M9 18l6-6-6-6'],
 };
 
-const NavItem = ({ to, end, icon, label, onClick }) => (
+// ── Nav item ─────────────────────────────────────────────────────────────────
+const NavItem = ({ to, end, icon, label, onClick, badge }) => (
   <NavLink
     to={to}
     end={end}
+    title={label}
+    data-badge={badge ? 'true' : undefined}
     className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
     onClick={onClick}
   >
     <Icon d={ICONS[icon]} />
     <span>{label}</span>
+    {badge && <span className="nav-badge">{badge > 99 ? '99+' : badge}</span>}
   </NavLink>
 );
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Layout({ children }) {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const superAdmin = isSuperAdmin();
-  const name = getName();
-  const [theme, setTheme] = useState(getTheme);
+  const name      = getName();
+
+  const [theme, setTheme]           = useState(getTheme);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed]   = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   const [mikrotikStatus, setMikrotikStatus] = useState(null);
+  const [pendingCount, setPendingCount]     = useState(0);
 
   const handleToggle = () => { const next = toggleTheme(); setTheme(next); };
-  const logout = () => { clearAuth(); navigate('/login'); };
+  const logout       = () => { clearAuth(); navigate('/login'); };
   const closeSidebar = () => setSidebarOpen(false);
 
+  const toggleCollapse = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem('sidebar-collapsed', next);
+      return next;
+    });
+  };
+
+  // Router health
   useEffect(() => {
     const check = () => {
       client.get('/admin/health/mikrotik')
@@ -69,9 +89,31 @@ export default function Layout({ children }) {
     return () => clearInterval(id);
   }, []);
 
+  // Pending settlements badge (superadmin only)
+  useEffect(() => {
+    if (!superAdmin) return;
+    const check = () => {
+      client.get('/admin/stats')
+        .then((r) => {
+          const pending = r.data?.data?.pendingSettlements;
+          setPendingCount(pending > 0 ? 1 : 0); // just show dot, not amount
+        })
+        .catch(() => {});
+    };
+    check();
+    const id = setInterval(check, SETTLE_POLL);
+    return () => clearInterval(id);
+  }, [superAdmin]);
+
   const initials = name
     ? name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
     : '??';
+
+  const sidebarClass = [
+    'sidebar',
+    sidebarOpen ? 'sidebar-open' : '',
+    collapsed   ? 'sidebar--collapsed' : '',
+  ].filter(Boolean).join(' ');
 
   return (
     <div className="layout">
@@ -88,48 +130,59 @@ export default function Layout({ children }) {
 
       {sidebarOpen && <div className="sidebar-overlay" onClick={closeSidebar} />}
 
-      <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
+      <aside className={sidebarClass}>
 
         {/* Brand */}
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon">
-            <Icon d={ICONS.wifi} size={18} />
-          </div>
-          <div className="sidebar-brand-text">
-            <span className="sidebar-brand-name">GlimmerInk WiFi</span>
-            {superAdmin && <span className="sidebar-brand-role">Superadmin</span>}
-          </div>
+          {!collapsed && (
+            <div className="sidebar-brand-icon">
+              <Icon d={ICONS.wifi} size={18} />
+            </div>
+          )}
+          {!collapsed && (
+            <div className="sidebar-brand-text">
+              <span className="sidebar-brand-name">GlimmerInk WiFi</span>
+              {superAdmin && <span className="sidebar-brand-role">Superadmin</span>}
+            </div>
+          )}
+          <button
+            className="sidebar-collapse-btn"
+            onClick={toggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Icon d={collapsed ? ICONS.chevronRight : ICONS.chevronLeft} size={13} />
+          </button>
         </div>
 
         {/* Primary nav */}
         <nav className="sidebar-nav">
           <div className="sidebar-section-label">Management</div>
-          <NavItem to="/" end icon="dashboard" label="Dashboard" onClick={closeSidebar} />
-          <NavItem to="/sessions"     icon="sessions"     label="Sessions"     onClick={closeSidebar} />
-          <NavItem to="/transactions" icon="transactions" label="Transactions"  onClick={closeSidebar} />
-          <NavItem to="/bundles"      icon="bundles"      label="Bundles"       onClick={closeSidebar} />
-          <NavItem to="/vouchers"     icon="vouchers"     label="Vouchers"      onClick={closeSidebar} />
+          <NavItem to="/"            end icon="dashboard"    label="Dashboard"    onClick={closeSidebar} />
+          <NavItem to="/sessions"       icon="sessions"      label="Sessions"     onClick={closeSidebar} />
+          <NavItem to="/transactions"   icon="transactions"  label="Transactions" onClick={closeSidebar} />
+          <NavItem to="/bundles"        icon="bundles"       label="Bundles"      onClick={closeSidebar} />
+          <NavItem to="/vouchers"       icon="vouchers"      label="Vouchers"     onClick={closeSidebar} />
         </nav>
 
         {/* Superadmin nav */}
         {superAdmin && (
           <nav className="sidebar-nav">
             <div className="sidebar-section-label">Platform</div>
-            <NavItem to="/analytics"   icon="analytics"   label="Analytics"    onClick={closeSidebar} />
-            <NavItem to="/operators"   icon="operators"   label="Operators"    onClick={closeSidebar} />
-            <NavItem to="/settlements" icon="settlements" label="Settlements"  onClick={closeSidebar} />
-            <NavItem to="/users"       icon="users"       label="Admin Users"  onClick={closeSidebar} />
-            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"   onClick={closeSidebar} />
-            <NavItem to="/settings"    icon="settings"    label="Settings"     onClick={closeSidebar} />
+            <NavItem to="/analytics"   icon="analytics"   label="Analytics"   onClick={closeSidebar} />
+            <NavItem to="/operators"   icon="operators"   label="Operators"   onClick={closeSidebar} />
+            <NavItem to="/settlements" icon="settlements" label="Settlements"  onClick={closeSidebar} badge={pendingCount || undefined} />
+            <NavItem to="/users"       icon="users"       label="Admin Users" onClick={closeSidebar} />
+            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"  onClick={closeSidebar} />
+            <NavItem to="/settings"    icon="settings"    label="Settings"    onClick={closeSidebar} />
           </nav>
         )}
 
         {/* Footer */}
         <div className="sidebar-footer">
 
-          {/* Router status chip */}
+          {/* Router status */}
           {mikrotikStatus !== null && (
-            <div className={`router-status router-status--${mikrotikStatus}`}>
+            <div className={`router-status router-status--${mikrotikStatus}`} title={`Router ${mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}`}>
               <span className="router-dot" />
               <span>Router {mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}</span>
             </div>
@@ -148,17 +201,19 @@ export default function Layout({ children }) {
           </div>
 
           {/* Theme toggle */}
-          <button className="theme-toggle" onClick={handleToggle} title="Toggle theme">
+          <button className="theme-toggle" onClick={handleToggle} title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
             <Icon d={theme === 'light' ? ICONS.moon : ICONS.sun} size={14} />
             <span>{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
           </button>
 
-          <div className="sidebar-credit">
-            Managed by{' '}
-            <a href="https://glimmerink.co.ke" target="_blank" rel="noopener noreferrer">
-              GlimmerInk Creations
-            </a>
-          </div>
+          {!collapsed && (
+            <div className="sidebar-credit">
+              Managed by{' '}
+              <a href="https://glimmerink.co.ke" target="_blank" rel="noopener noreferrer">
+                GlimmerInk Creations
+              </a>
+            </div>
+          )}
         </div>
       </aside>
 
