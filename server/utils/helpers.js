@@ -13,7 +13,13 @@ const generatePassword = (length = 8) => {
   return crypto.randomBytes(length).toString('base64url').slice(0, length);
 };
 
-const generateUsername = () => `u_${new mongoose.Types.ObjectId().toHexString()}`;
+const generateUsername = (seed) => {
+  if (seed) {
+    const hash = crypto.createHash('md5').update(String(seed)).digest('hex').slice(0, 12);
+    return `u_${hash}`;
+  }
+  return `u_${new mongoose.Types.ObjectId().toHexString()}`;
+};
 
 const getNairobiHour = () => {
   const parts = new Intl.DateTimeFormat('en-US', {

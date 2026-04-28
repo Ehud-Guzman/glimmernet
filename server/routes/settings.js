@@ -218,6 +218,16 @@ const DEFAULTS = [
     description: 'Comma-separated list of origins allowed to call the API. Leave blank to allow localhost dev origins only.',
     group: 'security',
   },
+
+  // ── Admin Notifications ───────────────────────────────────────────────────────
+  {
+    key: 'admin_notification_phone',
+    value: '',
+    type: 'string',
+    label: 'Admin Notification Phone',
+    description: 'Phone number (e.g. 0712345678) that receives an SMS when a new operator signs up. Requires SMS to be enabled.',
+    group: 'notifications',
+  },
 ];
 
 /**

@@ -13,6 +13,13 @@ const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 3000;
 
+const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
+const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missing.length) {
+  logger.error(`Missing required environment variables: ${missing.join(', ')}. Server will not start.`);
+  process.exit(1);
+}
+
 const start = async () => {
   await connectDB();
   await seedDefaults();

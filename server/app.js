@@ -20,6 +20,10 @@ const errorHandler       = require('./middleware/errorHandler');
 
 const app = express();
 
+// Trust the first proxy hop (Render's load balancer) so req.ip and
+// express-rate-limit see the real client IP, not the proxy's internal IP.
+app.set('trust proxy', 1);
+
 app.use(helmet({ hsts: { maxAge: 31536000, includeSubDomains: true } }));
 
 // CORS — checks ALLOWED_ORIGINS env var first (static, set on Render), then DB setting

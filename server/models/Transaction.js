@@ -24,4 +24,8 @@ const TransactionSchema = new mongoose.Schema({
   isTrial: { type: Boolean, default: false },
 }, { timestamps: true });
 
+// Compound indexes for hot query paths
+TransactionSchema.index({ macAddress: 1, bundleId: 1, status: 1, createdAt: 1 });
+TransactionSchema.index({ operatorId: 1, status: 1, createdAt: 1 });
+
 module.exports = mongoose.model('Transaction', TransactionSchema);

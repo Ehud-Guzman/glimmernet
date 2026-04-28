@@ -22,4 +22,8 @@ const SessionSchema = new mongoose.Schema({
   reminderSent: { type: Boolean, default: false },
 }, { timestamps: true });
 
+// Compound indexes for hot query paths
+SessionSchema.index({ macAddress: 1, status: 1 });
+SessionSchema.index({ operatorId: 1, status: 1, expiresAt: 1 });
+
 module.exports = mongoose.model('Session', SessionSchema);

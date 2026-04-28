@@ -21,9 +21,9 @@ router.get('/revenue', async (req, res, next) => {
       {
         $group: {
           _id: {
-            year:  { $year:  '$createdAt' },
-            month: { $month: '$createdAt' },
-            day:   { $dayOfMonth: '$createdAt' },
+            year:  { $year:  { date: '$createdAt', timezone: 'Africa/Nairobi' } },
+            month: { $month: { date: '$createdAt', timezone: 'Africa/Nairobi' } },
+            day:   { $dayOfMonth: { date: '$createdAt', timezone: 'Africa/Nairobi' } },
           },
           gross:       { $sum: '$amount' },
           platformFee: { $sum: '$platformFee' },
@@ -34,13 +34,26 @@ router.get('/revenue', async (req, res, next) => {
       { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } },
     ]);
 
-    const data = rows.map((r) => ({
-      date: `${r._id.year}-${String(r._id.month).padStart(2, '0')}-${String(r._id.day).padStart(2, '0')}`,
-      gross: r.gross,
-      platformFee: r.platformFee,
-      operatorNet: r.operatorNet,
-      count: r.count,
-    }));
+    const toNairobiDateKey = (d) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(d);
+
+    const map = {};
+    rows.forEach((r) => {
+      const key = `${r._id.year}-${String(r._id.month).padStart(2, '0')}-${String(r._id.day).padStart(2, '0')}`;
+      map[key] = r;
+    });
+
+    // Anchor to midnight Nairobi so gap-fill keys align with aggregation timezone
+    const todayNairobiStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+    const anchorSince = new Date(`${todayNairobiStr}T00:00:00+03:00`);
+    anchorSince.setDate(anchorSince.getDate() - 29);
+
+    const data = Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(anchorSince.getTime() + i * 24 * 60 * 60 * 1000);
+      const key = toNairobiDateKey(d);
+      const r = map[key];
+      return { date: key, gross: r?.gross || 0, platformFee: r?.platformFee || 0, operatorNet: r?.operatorNet || 0, count: r?.count || 0 };
+    });
 
     res.json({ success: true, data });
   } catch (err) {
