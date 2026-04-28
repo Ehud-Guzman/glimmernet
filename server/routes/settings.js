@@ -270,7 +270,7 @@ router.put('/:key', protect, isSuperAdmin, async (req, res, next) => {
     if (DARAJA_KEYS.has(req.params.key)) invalidateDarajaToken();
 
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SETTING_UPDATED', targetModel: 'Setting', targetId: setting._id,
       meta: {
         key: req.params.key,
@@ -304,7 +304,7 @@ router.put('/', protect, isSuperAdmin, async (req, res, next) => {
       redactedMeta[k] = SENSITIVE_SETTING_KEYS.has(k) ? '[REDACTED]' : v;
     }
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SETTINGS_BATCH_UPDATED',
       meta: { keys: Object.keys(settings), values: redactedMeta },
     });

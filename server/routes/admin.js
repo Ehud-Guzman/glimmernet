@@ -75,7 +75,7 @@ router.post('/users', isSuperAdmin, async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await AdminUser.create({ name, email, passwordHash, role });
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'ADMIN_USER_CREATED', targetModel: 'AdminUser', targetId: user._id,
       meta: { email: user.email, role: user.role },
     });
@@ -115,7 +115,7 @@ router.put('/users/:id', isSuperAdmin, async (req, res, next) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'ADMIN_USER_UPDATED', targetModel: 'AdminUser', targetId: user._id,
       meta: { fields: Object.keys(update) },
     });
@@ -163,7 +163,7 @@ router.post('/sessions/grant', validate(schemas.sessionGrant), async (req, res, 
     });
 
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SESSION_GRANTED', targetModel: 'Session', targetId: session._id,
       meta: { macAddress, bundleId, durationMinutes, note },
     });
@@ -182,7 +182,7 @@ router.delete('/sessions/:id', async (req, res, next) => {
     session.mikrotikRemoved = true;
     await session.save();
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SESSION_TERMINATED', targetModel: 'Session', targetId: session._id,
       meta: { username: session.username, macAddress: session.macAddress },
     });
@@ -313,7 +313,7 @@ router.post('/bundles', validate(schemas.bundleCreate), async (req, res, next) =
   try {
     const bundle = await Bundle.create(req.body);
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'BUNDLE_CREATED', targetModel: 'Bundle', targetId: bundle._id,
       meta: { name: bundle.name, price: bundle.price },
     });
@@ -328,7 +328,7 @@ router.put('/bundles/:id', validate(schemas.bundleUpdate), async (req, res, next
     const bundle = await Bundle.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!bundle) return res.status(404).json({ success: false, message: 'Bundle not found' });
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'BUNDLE_UPDATED', targetModel: 'Bundle', targetId: bundle._id,
       meta: { fields: Object.keys(req.body) },
     });
@@ -353,7 +353,7 @@ router.delete('/bundles/:id', isSuperAdmin, async (req, res, next) => {
 
     await bundle.deleteOne();
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'BUNDLE_DELETED', targetModel: 'Bundle', targetId: bundle._id,
       meta: { name: bundle.name, price: bundle.price },
     });
@@ -404,7 +404,7 @@ router.post('/vouchers/generate', isSuperAdmin, validate(schemas.voucherGenerate
     })));
 
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'VOUCHERS_GENERATED', targetModel: 'Bundle', targetId: bundle._id,
       meta: { batchId, quantity, type, bundleId, maxDevices },
     });
@@ -421,7 +421,7 @@ router.put('/vouchers/:id/revoke', isSuperAdmin, async (req, res, next) => {
     voucher.status = 'REVOKED';
     await voucher.save();
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'VOUCHER_REVOKED', targetModel: 'Voucher', targetId: voucher._id,
       meta: { code: voucher.code, batchId: voucher.batchId },
     });
@@ -484,7 +484,7 @@ router.post('/operators', isSuperAdmin, validate(schemas.operatorCreate), async 
     }
     const op = await Operator.create(operatorData);
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'OPERATOR_CREATED', targetModel: 'Operator', targetId: op._id,
       meta: { shortCode: op.shortCode, name: op.name },
     });
@@ -505,7 +505,7 @@ router.put('/operators/:id', isSuperAdmin, validate(schemas.operatorUpdate), asy
     const op = await Operator.findByIdAndUpdate(req.params.id, rest, { new: true, runValidators: true });
     if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'OPERATOR_UPDATED', targetModel: 'Operator', targetId: op._id,
       meta: { fields: Object.keys(rest) },
     });
@@ -549,7 +549,7 @@ router.delete('/operators/:id', isSuperAdmin, async (req, res, next) => {
     await op.deleteOne();
 
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'OPERATOR_DELETED', targetModel: 'Operator', targetId: op._id,
       meta: { shortCode: op.shortCode, name: op.name },
     });
@@ -619,7 +619,7 @@ router.post('/settlements', isSuperAdmin, async (req, res, next) => {
       operatorId, amount: Number(amount), method, adminId: req.admin.id, notes,
     });
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SETTLEMENT_CREATED', targetModel: 'Settlement', targetId: settlement._id,
       meta: { operatorId, amount: settlement.amount, method },
     });
@@ -639,7 +639,7 @@ router.put('/settlements/:id/mark-paid', isSuperAdmin, async (req, res, next) =>
     s.notes    = req.body.notes    || s.notes;
     await s.save();
     await audit({
-      actor: req.admin._id, actorModel: 'AdminUser', actorName: req.admin.name,
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
       action: 'SETTLEMENT_MARKED_PAID', targetModel: 'Settlement', targetId: s._id,
       meta: { mpesaRef: s.mpesaRef, amount: s.amount },
     });
