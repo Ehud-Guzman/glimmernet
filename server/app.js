@@ -29,6 +29,7 @@ app.use(helmet({ hsts: { maxAge: 31536000, includeSubDomains: true } }));
 // CORS — checks ALLOWED_ORIGINS env var first (static, set on Render), then DB setting
 // (dynamic, editable via admin dashboard). Requests with no origin are always allowed.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
+const DEV_PRIVATE_ORIGIN_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(?::\d{1,5})?$/i;
 const ENV_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
@@ -46,9 +47,11 @@ app.use(cors({
         ? dbOrigins
         : (process.env.NODE_ENV !== 'production' ? DEV_ORIGINS : []);
       if (allowed.includes(origin)) return cb(null, true);
+      // Local/LAN testing: allow private-network origins in non-production.
+      if (process.env.NODE_ENV !== 'production' && DEV_PRIVATE_ORIGIN_RE.test(origin)) return cb(null, true);
       cb(new Error(`CORS: origin ${origin} not allowed`));
     } catch {
-      if (process.env.NODE_ENV !== 'production' && DEV_ORIGINS.includes(origin)) return cb(null, true);
+      if (process.env.NODE_ENV !== 'production' && (DEV_ORIGINS.includes(origin) || DEV_PRIVATE_ORIGIN_RE.test(origin))) return cb(null, true);
       cb(new Error('CORS check failed'));
     }
   },

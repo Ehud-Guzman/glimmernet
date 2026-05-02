@@ -151,8 +151,6 @@ export default function Settings() {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [helpOpen, setHelpOpen] = useState(true);
 
-  useEffect(() => { setHelpOpen(true); }, [activeTab]);
-
   useEffect(() => {
     axios.get('/api/v1/admin/settings', api())
       .then((r) => {
