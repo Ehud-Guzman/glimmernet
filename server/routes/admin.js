@@ -579,7 +579,7 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
     const raw = err.message || '';
     let friendly = raw;
     if (/ECONNREFUSED/.test(raw))       friendly = `Connection refused — is the RouterOS API service enabled on port ${err.port || 8728}? (IP → Services → api)`;
-    else if (/ETIMEDOUT|ECONNRESET/.test(raw)) friendly = 'Router unreachable — check the IP address and that this server can reach the router.';
+    else if (/ETIMEDOUT|ECONNRESET|timed out/i.test(raw)) friendly = 'Router unreachable — check the IP address and that this server can reach the router. If the router is on a local network, the cloud backend cannot reach it directly.';
     else if (/login|cannot log in|bad credentials|invalid user/i.test(raw)) friendly = 'Login failed — check the API username and password.';
     else if (/ENOTFOUND|getaddrinfo/.test(raw)) friendly = 'Hostname not found — use an IP address, not a domain name.';
     res.status(400).json({ success: false, message: friendly });
