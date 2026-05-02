@@ -685,12 +685,13 @@ router.get('/stats', async (req, res, next) => {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
     const queries = [
-      Session.countDocuments({ status: 'ACTIVE' }),
+      Session.countDocuments({ status: 'ACTIVE' }),                                              // [0]
       Transaction.aggregate([
         { $match: { status: 'SUCCESS', createdAt: { $gte: todayStart } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
-      ]),
-      Transaction.countDocuments({ status: 'SUCCESS' }),
+      ]),                                                                                          // [1]
+      Transaction.countDocuments({ status: 'SUCCESS' }),                                          // [2]
+      Transaction.countDocuments({ status: 'ACCESS_FAILED', createdAt: { $gte: todayStart } }),  // [3]
     ];
 
     if (req.admin.role === 'superadmin') {
@@ -698,44 +699,132 @@ router.get('/stats', async (req, res, next) => {
         Transaction.aggregate([
           { $match: { status: 'SUCCESS', createdAt: { $gte: todayStart } } },
           { $group: { _id: null, total: { $sum: '$platformFee' } } },
-        ]),
+        ]),                                                                                        // [4]
         Transaction.aggregate([
           { $match: { status: 'SUCCESS', createdAt: { $gte: monthStart } } },
           { $group: { _id: null, total: { $sum: '$platformFee' } } },
-        ]),
+        ]),                                                                                        // [5]
         Transaction.aggregate([
           { $match: { status: 'SUCCESS' } },
           { $group: { _id: null, total: { $sum: '$amount' } } },
-        ]),
+        ]),                                                                                        // [6]
         Settlement.aggregate([
           { $match: { status: { $in: ['PENDING', 'PROCESSING'] } } },
           { $group: { _id: null, total: { $sum: '$amount' } } },
-        ]),
-        Operator.countDocuments({ status: 'ACTIVE' }),
+        ]),                                                                                        // [7]
+        Operator.countDocuments({ status: 'ACTIVE' }),                                            // [8]
+        Settlement.countDocuments({ status: { $in: ['PENDING', 'PROCESSING'] } }),                // [9]
+        Operator.countDocuments({ status: 'PENDING' }),                                           // [10]
+        Operator.countDocuments({ status: 'ACTIVE', healthStatus: 'DOWN' }),                      // [11]
       );
     }
 
     const results = await Promise.all(queries);
-    const [activeSessions, todayRevenueRes, totalTransactions] = results;
+    const [activeSessions, todayRevenueRes, totalTransactions, accessFailedToday] = results;
 
     const data = {
       activeSessions,
       todayRevenue: todayRevenueRes[0]?.total || 0,
       totalTransactions,
+      accessFailedToday,
     };
 
     if (req.admin.role === 'superadmin') {
-      const [, , , feesToday, feesMonth, allTimeVolume, pendingSettlements, activeOperators] = results;
-      data.platformFeesToday    = feesToday[0]?.total          || 0;
-      data.platformFeesMonth    = feesMonth[0]?.total          || 0;
-      data.allTimeVolume        = allTimeVolume[0]?.total      || 0;
-      data.pendingSettlements   = pendingSettlements[0]?.total || 0;
-      data.activeOperators      = activeOperators;
+      const [, , , , feesToday, feesMonth, allTimeVolume, pendingSettlements, activeOperators, pendingSettlementsCount, pendingOperatorsCount, offlineOperatorsCount] = results;
+      data.platformFeesToday       = feesToday[0]?.total          || 0;
+      data.platformFeesMonth       = feesMonth[0]?.total          || 0;
+      data.allTimeVolume           = allTimeVolume[0]?.total      || 0;
+      data.pendingSettlements      = pendingSettlements[0]?.total || 0;
+      data.activeOperators         = activeOperators;
+      data.pendingSettlementsCount = pendingSettlementsCount;
+      data.pendingOperatorsCount   = pendingOperatorsCount;
+      data.offlineOperatorsCount   = offlineOperatorsCount;
     }
 
     data.feePercent = Number(await configService.get('platform_fee_percent', process.env.PLATFORM_FEE_PERCENT || 5));
 
     res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Customer lookup by phone ───────────────────────────────────────────────────
+
+router.get('/customer-lookup', async (req, res, next) => {
+  try {
+    const raw = (req.query.phone || '').trim().replace(/\s/g, '');
+    if (!raw) return res.status(400).json({ success: false, message: 'phone is required' });
+
+    const digits = raw.replace(/^\+/, '').replace(/^0/, '254');
+    const variants = [...new Set([raw, `+${digits}`, digits, `0${digits.slice(3)}`])];
+
+    const [lastTransaction, activeSession, recentSessions] = await Promise.all([
+      Transaction.findOne({ phone: { $in: variants } })
+        .populate('bundleId', 'name price durationMinutes')
+        .populate('operatorId', 'name shortCode')
+        .sort({ createdAt: -1 }),
+      Session.findOne({ phone: { $in: variants }, status: 'ACTIVE' })
+        .populate('bundleId', 'name price durationMinutes')
+        .populate('operatorId', 'name shortCode'),
+      Session.find({ phone: { $in: variants } })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('macAddress status expiresAt createdAt'),
+    ]);
+
+    const lastMac = recentSessions.find((s) => s.macAddress)?.macAddress || null;
+
+    res.json({ success: true, data: { lastTransaction, activeSession, recentSessions, lastMac } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Retry MikroTik provision for a paid-but-no-internet transaction ────────────
+
+router.post('/transactions/:id/retry-grant', async (req, res, next) => {
+  try {
+    const txn = await Transaction.findById(req.params.id)
+      .populate('bundleId')
+      .populate('operatorId');
+
+    if (!txn) return res.status(404).json({ success: false, message: 'Transaction not found' });
+    if (txn.status !== 'SUCCESS' && txn.status !== 'ACCESS_FAILED') {
+      return res.status(400).json({ success: false, message: 'Can only retry for paid transactions where access was not granted' });
+    }
+
+    if (txn.sessionId) {
+      const existing = await Session.findOne({ _id: txn.sessionId, status: 'ACTIVE' });
+      if (existing) return res.status(400).json({ success: false, message: 'An active session already exists for this transaction' });
+    }
+
+    const mac = (req.body.macAddress || txn.macAddress || '').trim().toUpperCase();
+    if (!mac) {
+      return res.status(400).json({ success: false, message: 'No MAC address on this transaction — provide it in the request body' });
+    }
+
+    const bundle = txn.bundleId?.toObject ? txn.bundleId.toObject() : txn.bundleId;
+    const session = await createProvisionedSession({
+      phone:         txn.phone,
+      macAddress:    mac,
+      bundle,
+      operator:      txn.operatorId,
+      transactionId: txn._id,
+      usernameSeed:  mac,
+    });
+
+    txn.status    = 'SUCCESS';
+    txn.sessionId = session._id;
+    await txn.save();
+
+    await audit({
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'SESSION_GRANTED', targetModel: 'Session', targetId: session._id,
+      meta: { transactionId: txn._id, phone: txn.phone, macAddress: mac, retried: true },
+    });
+
+    res.status(201).json({ success: true, data: session });
   } catch (err) {
     next(err);
   }

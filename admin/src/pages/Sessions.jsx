@@ -26,25 +26,47 @@ const EmptyState = ({ icon, title, body }) => (
 
 function GrantModal({ onClose, onSuccess }) {
   const toast = useToast();
-  const [bundles, setBundles] = useState([]);
+  const [bundles, setBundles]     = useState([]);
   const [operators, setOperators] = useState([]);
   const [selectedOp, setSelectedOp] = useState('');
   const [form, setForm] = useState({ macAddress: '', bundleId: '', phone: '', durationMinutes: '', note: '' });
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [err, setErr]               = useState('');
+  const [lookupPhone, setLookupPhone] = useState('');
+  const [looking, setLooking]         = useState(false);
+  const [lookupHint, setLookupHint]   = useState('');
 
   useEffect(() => {
     client.get('/admin/operators').then((r) => setOperators(r.data.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const url = selectedOp === ''
-      ? '/admin/bundles'
-      : `/admin/bundles?operatorId=${selectedOp}`;
+    const url = selectedOp === '' ? '/admin/bundles' : `/admin/bundles?operatorId=${selectedOp}`;
     client.get(url).then((r) => setBundles(r.data.data)).catch(() => {});
   }, [selectedOp]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const lookupByPhone = async () => {
+    const q = lookupPhone.trim();
+    if (!q) return;
+    setLooking(true); setLookupHint('');
+    try {
+      const r = await client.get(`/admin/customer-lookup?phone=${encodeURIComponent(q)}`);
+      const { lastMac, activeSession } = r.data.data;
+      if (lastMac) {
+        set('macAddress', lastMac);
+        set('phone', q);
+        setLookupHint(`MAC filled from previous session${activeSession ? ' (has active session)' : ''}.`);
+      } else {
+        setLookupHint('No previous MAC found for this number — enter it manually.');
+      }
+    } catch {
+      setLookupHint('Lookup failed.');
+    } finally {
+      setLooking(false);
+    }
+  };
 
   const submit = async () => {
     if (!form.macAddress || !form.bundleId) { setErr('MAC address and bundle are required.'); return; }
@@ -70,6 +92,35 @@ function GrantModal({ onClose, onSuccess }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <h3>Grant Access</h3>
+
+        {/* Phone lookup — fills MAC automatically */}
+        <div style={{
+          background: 'var(--surface-2)', border: '1px solid var(--border)',
+          borderRadius: '10px', padding: '0.85rem 1rem', marginBottom: '1.25rem',
+        }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-3)', marginBottom: '0.55rem' }}>
+            Look up by phone to auto-fill MAC
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input
+              className="input"
+              placeholder="0712345678"
+              value={lookupPhone}
+              onChange={(e) => { setLookupPhone(e.target.value); setLookupHint(''); }}
+              onKeyDown={(e) => e.key === 'Enter' && lookupByPhone()}
+              style={{ flex: 1, fontSize: '0.85rem' }}
+            />
+            <button className="btn btn-ghost" onClick={lookupByPhone} disabled={looking || !lookupPhone.trim()} style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+              {looking ? '…' : 'Look Up'}
+            </button>
+          </div>
+          {lookupHint && (
+            <div style={{ fontSize: '0.75rem', marginTop: '0.4rem', color: lookupHint.includes('filled') ? 'var(--green)' : 'var(--text-3)' }}>
+              {lookupHint}
+            </div>
+          )}
+        </div>
+
         <div className="form-group">
           <label>Filter by Operator (optional)</label>
           <select className="input" value={selectedOp} onChange={(e) => { setSelectedOp(e.target.value); set('bundleId', ''); }}>
@@ -147,7 +198,7 @@ export default function Sessions() {
     if (!confirm('Terminate this session?')) return;
     setTerminating(id);
     try {
-      await client.delete(`/admin/session/${id}`);
+      await client.delete(`/admin/sessions/${id}`);
       toast.success('Session terminated.');
       fetchSessions();
     } catch (e) {

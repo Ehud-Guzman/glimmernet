@@ -131,6 +131,7 @@ export default function Operators() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [globalFeePercent, setGlobalFeePercent] = useState(5);
+  const [activeTab, setActiveTab] = useState('basics');
 
   const isCreate = modal === 'create';
 
@@ -147,7 +148,7 @@ export default function Operators() {
     }).catch(() => {});
   }, []);
 
-  const openCreate = () => { setForm(EMPTY); setError(''); setRouterStatus(null); setPortalPassword(''); setModal('create'); };
+  const openCreate = () => { setForm(EMPTY); setError(''); setRouterStatus(null); setPortalPassword(''); setActiveTab('basics'); setModal('create'); };
   const openEdit = (op) => {
     setForm({
       ...op,
@@ -163,7 +164,7 @@ export default function Operators() {
       supportWhatsapp: op.supportWhatsapp || '',
       supportEmail: op.supportEmail || '',
     });
-    setError(''); setRouterStatus(null); setPortalPassword(''); setModal(op);
+    setError(''); setRouterStatus(null); setPortalPassword(''); setActiveTab('basics'); setModal(op);
   };
   const closeModal = () => { setModal(null); setPortalPassword(''); };
 
@@ -189,6 +190,11 @@ export default function Operators() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!form.name || !form.shortCode || !form.ownerPhone || (isCreate && !portalPassword)) {
+      setError('Required: Display Name, Short Code, Settlement Phone' + (isCreate ? ', and Portal Password' : ''));
+      setActiveTab('basics');
+      return;
+    }
     setSaving(true); setError('');
     const payload = {
       ...form,
@@ -267,10 +273,11 @@ export default function Operators() {
     );
   };
 
-  const totalWallet   = operators.reduce((s, o) => s + (o.walletBalance  || 0), 0);
-  const totalLifetime = operators.reduce((s, o) => s + (o.lifetimeGross || 0), 0);
-  const activeCount   = operators.filter((o) => o.status === 'ACTIVE').length;
-  const pendingCount  = operators.filter((o) => o.status === 'PENDING').length;
+  const totalWallet    = operators.reduce((s, o) => s + (o.walletBalance  || 0), 0);
+  const totalLifetime  = operators.reduce((s, o) => s + (o.lifetimeGross || 0), 0);
+  const activeCount    = operators.filter((o) => o.status === 'ACTIVE').length;
+  const pendingCount   = operators.filter((o) => o.status === 'PENDING').length;
+  const downCount      = operators.filter((o) => o.status === 'ACTIVE' && o.healthStatus === 'DOWN').length;
 
   return (
     <>
@@ -281,11 +288,28 @@ export default function Operators() {
           <div style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>
             {activeCount} active{pendingCount > 0 && ` · ${pendingCount} pending approval`}
             &nbsp;·&nbsp;Global fee <strong style={{ color: 'var(--green)' }}>{globalFeePercent}%</strong>
-            &nbsp;·&nbsp;Portal URL: <code style={{ fontSize: '0.75rem' }}>http://&lt;server&gt;:3000/?mac=$mac&amp;op=SHORTCODE</code>
           </div>
         </div>
         <button className="btn btn-primary" onClick={openCreate}>+ Add Operator</button>
       </div>
+
+      {/* Down routers warning */}
+      {downCount > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          padding: '0.85rem 1.2rem', borderRadius: '12px', marginBottom: '1.25rem',
+          background: 'var(--red-dim)', border: '1px solid #ef444444',
+          color: 'var(--red)', fontSize: '0.85rem', fontWeight: 500,
+        }}>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>
+            <strong>{downCount} router{downCount > 1 ? 's' : ''} offline</strong> — new sessions will fail for {downCount > 1 ? 'these operators' : 'this operator'}. Check their MikroTik connection.
+          </span>
+        </div>
+      )}
 
       {/* Summary strip */}
       {operators.length > 0 && (
@@ -416,8 +440,10 @@ export default function Operators() {
                   ) : (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-3)', fontStyle: 'italic' }}>no router configured</span>
                   )}
-                  <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-3)' }}>
-                    {op.ownerPhone}
+                  <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-3)' }}>
+                    {op.lastHealthCheck
+                      ? `checked ${new Date(op.lastHealthCheck).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : op.ownerPhone}
                   </span>
                 </div>
 
@@ -465,329 +491,405 @@ export default function Operators() {
       {/* ── Add / Edit Operator Modal ── */}
       {modal && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 600, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+          <div className="modal" style={{ maxWidth: 620, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
 
-            {/* Header */}
-            <div style={{ padding: '1.4rem 1.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
-                  {isCreate ? 'Add Operator' : modal.name}
-                </h3>
-                <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: 'var(--text-3)' }}>
-                  {isCreate ? 'Register a new location or business on the platform.' : `Short code: ${modal.shortCode}`}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeModal}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.25rem', color: 'var(--text-3)', lineHeight: 1, padding: '0.1rem 0.25rem', marginLeft: '1rem' }}
-              >
-                ×
-              </button>
-            </div>
+            {/* Accent bar */}
+            <div style={{ height: 4, background: form.accentColor || '#00c853', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', flexShrink: 0 }} />
 
-            {/* Scrollable body */}
-            <form id="op-form" onSubmit={handleSave} style={{ flex: 1, overflowY: 'auto', padding: '0 1.75rem' }}>
-
-              {/* ── Identity ── */}
-              <Section label="Identity" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label>Short Code</label>
-                  <input
-                    type="text" required value={form.shortCode}
-                    placeholder="e.g. KAFE1"
-                    style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.05em' }}
-                    onChange={(e) => setField('shortCode', e.target.value.toUpperCase())}
-                  />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>3–10 alphanumeric chars</div>
-                </div>
-                <div className="form-group">
-                  <label>Status</label>
-                  <select value={form.status} onChange={(e) => setField('status', e.target.value)}>
-                    {form.status === 'PENDING' && <option value="PENDING" disabled>PENDING (awaiting approval)</option>}
-                    <option value="ACTIVE">Active</option>
-                    <option value="SUSPENDED">Suspended</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* ── Business Details ── */}
-              <Section label="Business Details" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label>Display Name *</label>
-                  <input type="text" required value={form.name} placeholder="Karen Cafe" onChange={(e) => setField('name', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Business / M-Pesa Name</label>
-                  <input type="text" value={form.businessName} placeholder="Legal or till name" onChange={(e) => setField('businessName', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Settlement Phone *</label>
-                  <input type="text" required value={form.ownerPhone} placeholder="07xxxxxxxx" onChange={(e) => setField('ownerPhone', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label>Email</label>
-                  <input type="email" value={form.email} placeholder="owner@example.com" onChange={(e) => setField('email', e.target.value)} />
-                </div>
-              </div>
-
-              {/* ── Billing ── */}
-              <Section label="Billing" />
-              <div className="form-group">
-                <label>Platform Fee %</label>
-                <input
-                  type="number" min={0} max={100} step={0.5}
-                  value={form.platformFeePercent}
-                  placeholder={`Leave blank to use global default (${globalFeePercent}%)`}
-                  onChange={(e) => setField('platformFeePercent', e.target.value)}
-                />
-              </div>
-
-              {/* ── Portal Branding ── */}
-              <Section label="Portal Branding" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>Brand Name</label>
-                  <input
-                    type="text"
-                    value={form.brandName}
-                    placeholder={form.name || 'e.g. Westgate Cafe WiFi'}
-                    onChange={(e) => setField('brandName', e.target.value)}
-                  />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                    Shown on the captive portal. Leave blank to use the display name.
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>Accent Color</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <input
-                      type="color"
-                      value={form.accentColor || '#00c853'}
-                      onChange={(e) => setField('accentColor', e.target.value)}
-                      style={{ width: 44, height: 38, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', background: 'var(--surface)' }}
-                    />
-                    <input
-                      type="text"
-                      value={form.accentColor || '#00c853'}
-                      onChange={(e) => setField('accentColor', e.target.value)}
-                      style={{ width: 90, fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Tagline</label>
-                <input
-                  type="text"
-                  value={form.brandTagline}
-                  placeholder="e.g. Fast, secure guest internet"
-                  onChange={(e) => setField('brandTagline', e.target.value)}
-                />
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                  One-line subtitle shown below the brand name on the portal.
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Logo URL</label>
-                <input
-                  type="url"
-                  value={form.logoUrl}
-                  placeholder="https://example.com/logo.png"
-                  onChange={(e) => setField('logoUrl', e.target.value)}
-                />
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                  Optional. Replaces the WiFi icon on the portal header. Use a square image, min 80×80 px.
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-                <div className="form-group">
-                  <label>Support Phone</label>
-                  <input
-                    type="text"
-                    value={form.supportPhone}
-                    placeholder="0700 000 000"
-                    onChange={(e) => setField('supportPhone', e.target.value)}
-                  />
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                    Shown on timeout screen &amp; SMS.
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label>Support WhatsApp</label>
-                  <input
-                    type="text"
-                    value={form.supportWhatsapp}
-                    placeholder="0700 000 000"
-                    onChange={(e) => setField('supportWhatsapp', e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Support Email</label>
-                  <input
-                    type="email"
-                    value={form.supportEmail}
-                    placeholder="help@cafe.co.ke"
-                    onChange={(e) => setField('supportEmail', e.target.value)}
-                  />
-                </div>
-              </div>
-              <BrandPreview form={form} />
-
-              {/* ── Hotspot & Trial ── */}
-              <Section label="Hotspot & Free Trial" />
-              <div className="form-group">
-                <label>MikroTik Hotspot Login URL</label>
-                <input
-                  type="text"
-                  value={form.hotspotLoginUrl}
-                  placeholder="http://192.168.88.1/login"
-                  onChange={(e) => setField('hotspotLoginUrl', e.target.value)}
-                />
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                  Where the portal auto-submits credentials after payment. Set to your router's login page URL.
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Free Trial (minutes)</label>
-                <input
-                  type="number" min={0} max={60} step={1}
-                  value={form.trialMinutes}
-                  placeholder="0 = disabled"
-                  onChange={(e) => setField('trialMinutes', e.target.value)}
-                />
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                  New devices get this many free minutes before the payment wall. 0 = disabled.
-                </div>
-              </div>
-
-              {/* ── Operator Portal Login ── */}
-              <Section label="Operator Portal Login" />
-              <div className="form-group">
-                <label>{isCreate ? 'Portal Password *' : 'Set / Change Portal Password'}</label>
-                <input
-                  type="password"
-                  value={portalPassword}
-                  autoComplete="new-password"
-                  placeholder={isCreate ? 'Min 8 characters' : 'Leave blank to keep existing password'}
-                  onChange={(e) => setPortalPassword(e.target.value)}
-                />
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.25rem' }}>
-                  Operator uses their <strong>email</strong> + this password to log in at <code>/operator/login</code>. Login requires a valid email above.
-                </div>
-              </div>
-
-              {/* ── MikroTik Router ── */}
-              <Section label="MikroTik Router" />
-              <div style={{
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '1rem',
-                marginBottom: '0.75rem',
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>Host / IP Address</label>
-                    <input type="text" value={form.mikrotikHost} placeholder="192.168.88.1"
-                      autoComplete="off" onChange={(e) => setRouterField('mikrotikHost', e.target.value)} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0, width: 90 }}>
-                    <label>API Port</label>
-                    <input type="text" value={form.mikrotikPort} placeholder="8728"
-                      onChange={(e) => setRouterField('mikrotikPort', e.target.value)} />
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>API Username</label>
-                    <input type="text" value={form.mikrotikUser} placeholder="admin"
-                      autoComplete="off" onChange={(e) => setRouterField('mikrotikUser', e.target.value)} />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>API Password</label>
-                    <input type="password" value={form.mikrotikPass} placeholder="••••••••"
-                      autoComplete="new-password" onChange={(e) => setRouterField('mikrotikPass', e.target.value)} />
-                  </div>
-                </div>
-
-                {/* Test connection — only after operator exists */}
-                {!isCreate && (
-                  <div style={{ marginTop: '0.85rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
-                        disabled={testingRouter || !form.mikrotikHost}
-                        onClick={handleTestRouter}
-                      >
-                        {testingRouter ? 'Testing…' : 'Test Connection'}
-                      </button>
-                      {!form.mikrotikHost && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>Enter a host IP above to test</span>
-                      )}
-                    </div>
-                    {form.mikrotikHost && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.35rem' }}>
-                        Tests the values currently entered above — no need to save first.
-                      </div>
+            {/* Header + tab nav */}
+            <div style={{ padding: '1.1rem 1.5rem 0', flexShrink: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: '9px', flexShrink: 0,
+                    background: `${form.accentColor || '#00c853'}20`,
+                    border: `1.5px solid ${form.accentColor || '#00c853'}44`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                  }}>
+                    {form.logoUrl ? (
+                      <img src={form.logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: form.accentColor || '#00c853', letterSpacing: '-0.02em' }}>
+                        {isCreate ? '+' : (form.brandName || form.name || '?').slice(0, 2).toUpperCase()}
+                      </span>
                     )}
                   </div>
-                )}
-                {isCreate && (
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.75rem', marginBottom: 0 }}>
-                    Save the operator first, then test the connection from the edit form.
-                  </p>
-                )}
-                <RouterFeedback status={routerStatus} />
-              </div>
-
-              {/* Portal URL — shown in edit mode once router host is set */}
-              {!isCreate && form.mikrotikHost && (
-                <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: 'var(--accent-dim)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-3)', marginBottom: '0.4rem' }}>
-                    Portal URL for MikroTik Hotspot
-                  </div>
-                  <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                    {(import.meta.env.VITE_API_URL || '').replace(/\/api\/v1\/?$/, '') || 'https://your-backend-url'}/?mac=$mac&amp;op={form.shortCode || modal.shortCode}
-                  </code>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.35rem' }}>
-                    Set this as the Login page URL in MikroTik Hotspot settings.
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>
+                      {isCreate ? 'Add Operator' : (form.brandName || form.name || modal.name)}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.1rem' }}>
+                      {isCreate ? 'Register a new location or business on the platform.' : `${modal.shortCode} · ${form.ownerPhone || form.email || '—'}`}
+                    </p>
                   </div>
                 </div>
-              )}
-
-              {/* Notes */}
-              <div className="form-group">
-                <label>Notes</label>
-                <input type="text" value={form.notes} placeholder="Internal notes (optional)"
-                  onChange={(e) => setField('notes', e.target.value)} />
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--text-3)', lineHeight: 1, padding: '0.25rem 0.15rem', marginLeft: '0.75rem' }}
+                >×</button>
               </div>
 
-              {error && <p className="error-msg">{error}</p>}
+              {/* Tab nav */}
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginLeft: '-1.5rem', marginRight: '-1.5rem', paddingLeft: '1.5rem' }}>
+                {[
+                  { key: 'basics',   label: 'Basics',         num: '1' },
+                  { key: 'branding', label: 'Branding',        num: '2' },
+                  { key: 'router',   label: 'Router & Config', num: '3' },
+                ].map((tab) => {
+                  const active = activeTab === tab.key;
+                  const accent = form.accentColor || '#00c853';
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveTab(tab.key)}
+                      style={{
+                        background: 'none', border: 'none',
+                        borderBottom: active ? `2px solid ${accent}` : '2px solid transparent',
+                        cursor: 'pointer',
+                        padding: '0.5rem 1rem 0.45rem',
+                        marginBottom: -1,
+                        fontSize: '0.82rem',
+                        fontWeight: active ? 700 : 500,
+                        color: active ? accent : 'var(--text-3)',
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        whiteSpace: 'nowrap',
+                        transition: 'color 0.12s',
+                      }}
+                    >
+                      <span style={{
+                        width: 17, height: 17, borderRadius: '50%', flexShrink: 0,
+                        background: active ? accent : 'var(--surface-2)',
+                        border: `1px solid ${active ? accent : 'var(--border)'}`,
+                        color: active ? '#fff' : 'var(--text-3)',
+                        fontSize: '0.62rem', fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'background 0.12s',
+                      }}>{tab.num}</span>
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-              {/* Spacer so content doesn't sit flush against sticky footer */}
+            {/* Scrollable form body */}
+            <form id="op-form" onSubmit={handleSave} style={{ flex: 1, overflowY: 'auto', padding: '0 1.5rem' }}>
+
+              {/* ── Tab 1: Basics ── */}
+              {activeTab === 'basics' && (
+                <>
+                  <Section label="Identity" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>Display Name *</label>
+                      <input type="text" required value={form.name} placeholder="Karen Cafe"
+                        onChange={(e) => setField('name', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Short Code *</label>
+                      <input
+                        type="text" required value={form.shortCode}
+                        placeholder="e.g. KAFE1"
+                        style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.05em' }}
+                        onChange={(e) => setField('shortCode', e.target.value.toUpperCase())}
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>3–10 alphanumeric chars</div>
+                    </div>
+                    <div className="form-group">
+                      <label>Settlement Phone *</label>
+                      <input type="text" required value={form.ownerPhone} placeholder="07xxxxxxxx"
+                        onChange={(e) => setField('ownerPhone', e.target.value)} />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>Used for M-Pesa B2C payouts</div>
+                    </div>
+                    <div className="form-group">
+                      <label>Email</label>
+                      <input type="email" value={form.email} placeholder="owner@example.com"
+                        onChange={(e) => setField('email', e.target.value)} />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>Required for portal login</div>
+                    </div>
+                    <div className="form-group">
+                      <label>Business / M-Pesa Name</label>
+                      <input type="text" value={form.businessName} placeholder="Legal or till name"
+                        onChange={(e) => setField('businessName', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select value={form.status} onChange={(e) => setField('status', e.target.value)}>
+                        {form.status === 'PENDING' && <option value="PENDING" disabled>PENDING (awaiting approval)</option>}
+                        <option value="ACTIVE">Active</option>
+                        <option value="SUSPENDED">Suspended</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <Section label="Portal Login" />
+                  <div className="form-group">
+                    <label>{isCreate ? 'Portal Password *' : 'Set / Change Portal Password'}</label>
+                    <input
+                      type="password" value={portalPassword}
+                      autoComplete="new-password"
+                      placeholder={isCreate ? 'Min 8 characters' : 'Leave blank to keep existing password'}
+                      onChange={(e) => setPortalPassword(e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      Operator logs in at <code>/operator/login</code> using their <strong>email</strong> + this password.
+                    </div>
+                  </div>
+
+                  <Section label="Billing" />
+                  <div className="form-group">
+                    <label>Platform Fee %</label>
+                    <input
+                      type="number" min={0} max={100} step={0.5}
+                      value={form.platformFeePercent}
+                      placeholder={`Leave blank for global default (${globalFeePercent}%)`}
+                      onChange={(e) => setField('platformFeePercent', e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      Overrides the global {globalFeePercent}% fee for this operator only.
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── Tab 2: Branding ── */}
+              {activeTab === 'branding' && (
+                <>
+                  <Section label="Brand Identity" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>Brand Name</label>
+                      <input
+                        type="text" value={form.brandName}
+                        placeholder={form.name || 'e.g. Westgate Cafe WiFi'}
+                        onChange={(e) => setField('brandName', e.target.value)}
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                        Shown on the captive portal. Defaults to display name.
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label>Accent Color</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="color" value={form.accentColor || '#00c853'}
+                          onChange={(e) => setField('accentColor', e.target.value)}
+                          style={{ width: 44, height: 38, padding: 2, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', background: 'var(--surface)' }}
+                        />
+                        <input
+                          type="text" value={form.accentColor || '#00c853'}
+                          onChange={(e) => setField('accentColor', e.target.value)}
+                          style={{ width: 90, fontFamily: 'monospace' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Tagline</label>
+                    <input
+                      type="text" value={form.brandTagline}
+                      placeholder="e.g. Fast, secure guest internet"
+                      onChange={(e) => setField('brandTagline', e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      One-line subtitle shown below the brand name on the portal.
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Logo URL</label>
+                    <input
+                      type="url" value={form.logoUrl}
+                      placeholder="https://example.com/logo.png"
+                      onChange={(e) => setField('logoUrl', e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      Square image, min 80×80 px. Replaces the WiFi icon on the portal.
+                    </div>
+                  </div>
+
+                  <Section label="Support Contacts" />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>Phone</label>
+                      <input type="text" value={form.supportPhone} placeholder="0700 000 000"
+                        onChange={(e) => setField('supportPhone', e.target.value)} />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>Shown on timeout &amp; SMS</div>
+                    </div>
+                    <div className="form-group">
+                      <label>WhatsApp</label>
+                      <input type="text" value={form.supportWhatsapp} placeholder="0700 000 000"
+                        onChange={(e) => setField('supportWhatsapp', e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label>Email</label>
+                      <input type="email" value={form.supportEmail} placeholder="help@cafe.co.ke"
+                        onChange={(e) => setField('supportEmail', e.target.value)} />
+                    </div>
+                  </div>
+
+                  <BrandPreview form={form} />
+                </>
+              )}
+
+              {/* ── Tab 3: Router & Config ── */}
+              {activeTab === 'router' && (
+                <>
+                  <Section label="MikroTik Router" />
+                  <div style={{
+                    fontSize: '0.77rem', color: 'var(--text-3)', lineHeight: 1.7,
+                    padding: '0.75rem', background: 'var(--surface-2)',
+                    borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '0.85rem',
+                  }}>
+                    The router must be reachable from the internet. Enable{' '}
+                    <strong>IP → Services → api</strong> (port 8728) and create an API user under{' '}
+                    <strong>System → Users</strong> with <em>api</em> policy.
+                    Use the <strong>public/static IP</strong> from the ISP — not 192.168.x.x.
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>Host / IP Address</label>
+                        <input type="text" value={form.mikrotikHost} placeholder="203.0.113.5"
+                          autoComplete="off" onChange={(e) => setRouterField('mikrotikHost', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0, width: 90 }}>
+                        <label>API Port</label>
+                        <input type="text" value={form.mikrotikPort} placeholder="8728"
+                          onChange={(e) => setRouterField('mikrotikPort', e.target.value)} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>API Username</label>
+                        <input type="text" value={form.mikrotikUser} placeholder="admin"
+                          autoComplete="off" onChange={(e) => setRouterField('mikrotikUser', e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label>API Password</label>
+                        <input type="password" value={form.mikrotikPass} placeholder="••••••••"
+                          autoComplete="new-password" onChange={(e) => setRouterField('mikrotikPass', e.target.value)} />
+                      </div>
+                    </div>
+                    {!isCreate && (
+                      <div style={{ marginTop: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button
+                          type="button" className="btn btn-ghost"
+                          style={{ fontSize: '0.8rem', padding: '0.35rem 0.85rem' }}
+                          disabled={testingRouter || !form.mikrotikHost}
+                          onClick={handleTestRouter}
+                        >
+                          {testingRouter ? 'Testing…' : 'Test Connection'}
+                        </button>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>
+                          {!form.mikrotikHost
+                            ? 'Enter a host IP above to test'
+                            : !routerStatus ? 'Tests values above — no need to save first' : ''}
+                        </span>
+                      </div>
+                    )}
+                    {isCreate && (
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.75rem', marginBottom: 0 }}>
+                        Save the operator first, then test the connection from the edit form.
+                      </p>
+                    )}
+                    <RouterFeedback status={routerStatus} />
+                  </div>
+
+                  {!isCreate && form.mikrotikHost && (
+                    <div style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem', background: 'var(--accent-dim)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-3)', marginBottom: '0.5rem' }}>
+                        Portal URL for MikroTik Hotspot
+                      </div>
+                      <code style={{ fontSize: '0.8rem', wordBreak: 'break-all', display: 'block', marginBottom: '0.6rem' }}>
+                        {(import.meta.env.VITE_PORTAL_URL || (import.meta.env.VITE_API_URL || '').replace(/\/api\/v1\/?$/, '') || '').replace(/\/$/, '') || 'https://your-portal-url'}/?mac=$mac&amp;op={form.shortCode || modal.shortCode}
+                      </code>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', lineHeight: 1.7 }}>
+                        Go to <strong>IP → Hotspot → Server Profiles → Login</strong> and set:<br />
+                        <strong>Login page URL</strong> → paste above &nbsp;·&nbsp; <strong>Login By</strong> → HTTP PAP (or CHAP)<br />
+                        Leave <strong>$mac</strong> and <strong>$op</strong> as-is — MikroTik fills them automatically.
+                      </div>
+                    </div>
+                  )}
+
+                  <Section label="Hotspot & Free Trial" />
+                  <div className="form-group">
+                    <label>MikroTik Hotspot Login URL</label>
+                    <input
+                      type="text" value={form.hotspotLoginUrl}
+                      placeholder="http://192.168.88.1/login"
+                      onChange={(e) => setField('hotspotLoginUrl', e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      Where the portal auto-submits credentials after payment.
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Free Trial (minutes)</label>
+                    <input
+                      type="number" min={0} max={60} step={1}
+                      value={form.trialMinutes} placeholder="0 = disabled"
+                      onChange={(e) => setField('trialMinutes', e.target.value)}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                      New devices get this many free minutes before the payment wall.
+                    </div>
+                  </div>
+
+                  <Section label="Notes" />
+                  <div className="form-group">
+                    <label>Internal Notes</label>
+                    <input type="text" value={form.notes} placeholder="Visible only in admin panel"
+                      onChange={(e) => setField('notes', e.target.value)} />
+                  </div>
+                </>
+              )}
+
+              {error && <p className="error-msg">{error}</p>}
               <div style={{ height: '0.5rem' }} />
             </form>
 
-            {/* Sticky footer — outside the form, so we trigger submit manually */}
+            {/* Sticky footer */}
             <div style={{
-              padding: '1rem 1.75rem',
+              padding: '0.9rem 1.5rem',
               borderTop: '1px solid var(--border)',
               display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '0.5rem',
+              justifyContent: 'space-between',
+              alignItems: 'center',
               flexShrink: 0,
               background: 'var(--surface)',
               borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
             }}>
-              <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
-              <button type="submit" form="op-form" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Saving…' : isCreate ? 'Create Operator' : 'Save Changes'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                {['basics', 'branding', 'router'].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setActiveTab(t)}
+                    style={{
+                      width: 7, height: 7, borderRadius: '50%', border: 'none', cursor: 'pointer', padding: 0,
+                      background: activeTab === t ? (form.accentColor || '#00c853') : 'var(--border)',
+                      transition: 'background 0.12s',
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
+                {activeTab !== 'router' && (
+                  <button
+                    type="button" className="btn btn-ghost"
+                    style={{ color: 'var(--text-2)' }}
+                    onClick={() => setActiveTab(activeTab === 'basics' ? 'branding' : 'router')}
+                  >
+                    Next →
+                  </button>
+                )}
+                <button type="submit" form="op-form" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Saving…' : isCreate ? 'Create Operator' : 'Save Changes'}
+                </button>
+              </div>
             </div>
 
           </div>

@@ -692,6 +692,102 @@ function AnalyticsTab() {
   );
 }
 
+// ── Setup Checklist ───────────────────────────────────────────────────────────
+function SetupChecklist({ profile, bundles, txnCount, onGoTo }) {
+  const steps = [
+    {
+      key: 'router',
+      done: !!(profile?.mikrotikHost),
+      label: 'Configure your MikroTik router',
+      hint: 'Add your router IP, username, and password',
+      action: () => onGoTo('settings'),
+    },
+    {
+      key: 'loginUrl',
+      done: !!(profile?.hotspotLoginUrl),
+      label: 'Set your hotspot login URL',
+      hint: 'The URL your router redirects customers to (e.g. http://192.168.88.1/login)',
+      action: () => onGoTo('settings'),
+    },
+    {
+      key: 'bundles',
+      done: bundles.length > 0,
+      label: 'Create at least one internet bundle',
+      hint: 'Customers need packages to buy — price, duration or data cap',
+      action: () => onGoTo('bundles'),
+    },
+    {
+      key: 'firstPayment',
+      done: txnCount > 0,
+      label: 'Receive your first payment',
+      hint: 'Share your portal link and do a test payment to confirm everything works',
+      action: null,
+    },
+  ];
+
+  const remaining = steps.filter((s) => !s.done).length;
+  if (remaining === 0) return null;
+
+  return (
+    <div style={{
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: '14px', padding: '1.25rem 1.4rem', marginBottom: '1.5rem',
+      borderLeft: '4px solid var(--accent)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>Get started — {remaining} step{remaining > 1 ? 's' : ''} to go live</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', marginTop: '0.15rem' }}>Complete these to start receiving payments</div>
+        </div>
+        <div style={{
+          fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)',
+          background: 'var(--accent-dim)', padding: '0.2rem 0.6rem', borderRadius: '6px',
+        }}>
+          {steps.filter((s) => s.done).length}/{steps.length}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+        {steps.map((step) => (
+          <div key={step.key} style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            opacity: step.done ? 0.45 : 1,
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+              border: `2px solid ${step.done ? 'var(--green)' : 'var(--border)'}`,
+              background: step.done ? 'var(--green)' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {step.done && (
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: step.done ? 'var(--text-3)' : 'var(--text)', textDecoration: step.done ? 'line-through' : 'none' }}>
+                {step.label}
+              </div>
+              {!step.done && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', marginTop: '0.1rem' }}>{step.hint}</div>
+              )}
+            </div>
+            {!step.done && step.action && (
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.65rem', flexShrink: 0 }}
+                onClick={step.action}
+              >
+                Go →
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function OperatorDashboard() {
   const navigate = useNavigate();
@@ -842,6 +938,14 @@ export default function OperatorDashboard() {
       {/* ── Page body ── */}
       <div style={{ maxWidth: 1060, margin: '0 auto', padding: '2rem 1.5rem' }}>
 
+        {/* Setup checklist — only shown when steps remain */}
+        <SetupChecklist
+          profile={profile}
+          bundles={bundles}
+          txnCount={stats?.txnCount ?? 0}
+          onGoTo={(t) => setTab(t)}
+        />
+
         {/* Stats grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
           {Object.keys(STAT_META).map((key) => (
@@ -867,32 +971,66 @@ export default function OperatorDashboard() {
         </div>
 
       {/* Sessions */}
-      {tab === 'sessions' && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th></tr>
-            </thead>
-            <tbody>
-              {sessions.length === 0 && (
-                <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)' }}>No active sessions.</td></tr>
-              )}
-              {sessions.map((s) => (
-                <tr key={s._id}>
-                  <td style={{ fontFamily: 'monospace' }}>{s.phone || '—'}</td>
-                  <td>{s.bundleId?.name || '—'}</td>
-                  <td style={{ fontSize: '0.82rem' }}>
-                    {s.expiresAt ? new Date(s.expiresAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'No expiry'}
-                  </td>
-                  <td style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
-                    {new Date(s.createdAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === 'sessions' && (() => {
+        const now = Date.now();
+        const expiringSoon = sessions.filter(
+          (s) => s.expiresAt && new Date(s.expiresAt).getTime() - now <= 60 * 60 * 1000 && new Date(s.expiresAt).getTime() > now
+        );
+        const fmtMinsLeft = (iso) => {
+          const mins = Math.ceil((new Date(iso).getTime() - now) / 60000);
+          return mins <= 0 ? 'now' : mins < 60 ? `${mins}m` : `${Math.ceil(mins / 60)}h`;
+        };
+        return (
+          <>
+            {expiringSoon.length > 0 && (
+              <div style={{
+                padding: '0.85rem 1.1rem', borderRadius: '12px', marginBottom: '1rem',
+                background: 'var(--orange-dim)', border: '1px solid #f59e0b44',
+                fontSize: '0.85rem', color: 'var(--orange)',
+              }}>
+                <strong>{expiringSoon.length} session{expiringSoon.length > 1 ? 's' : ''} expiring within the hour</strong>
+                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  {expiringSoon.map((s) => (
+                    <div key={s._id} style={{ display: 'flex', gap: '0.75rem', fontSize: '0.82rem' }}>
+                      <span style={{ fontFamily: 'monospace', minWidth: 110 }}>{s.phone || 'unknown'}</span>
+                      <span>{s.bundleId?.name || '—'}</span>
+                      <span style={{ marginLeft: 'auto', fontWeight: 700 }}>expires in {fmtMinsLeft(s.expiresAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th></tr>
+                </thead>
+                <tbody>
+                  {sessions.length === 0 && (
+                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)' }}>No active sessions.</td></tr>
+                  )}
+                  {sessions.map((s) => {
+                    const soonExpiry = s.expiresAt && new Date(s.expiresAt).getTime() - now <= 60 * 60 * 1000 && new Date(s.expiresAt).getTime() > now;
+                    return (
+                      <tr key={s._id} style={soonExpiry ? { background: 'var(--orange-dim)' } : {}}>
+                        <td style={{ fontFamily: 'monospace' }}>{s.phone || '—'}</td>
+                        <td>{s.bundleId?.name || '—'}</td>
+                        <td style={{ fontSize: '0.82rem', color: soonExpiry ? 'var(--orange)' : 'inherit', fontWeight: soonExpiry ? 600 : 'normal' }}>
+                          {s.expiresAt ? new Date(s.expiresAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'No expiry'}
+                          {soonExpiry && <span style={{ marginLeft: '0.4rem', fontSize: '0.75rem' }}>({fmtMinsLeft(s.expiresAt)})</span>}
+                        </td>
+                        <td style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
+                          {new Date(s.createdAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Transactions */}
       {tab === 'transactions' && (

@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { isSuperAdmin } from '../utils/auth';
+import { useToast } from '../context/ToastContext';
 
 const POLL_INTERVAL = 30_000;
 
@@ -38,6 +39,9 @@ const I = {
   settle:   <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
   voucher:  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>,
   arrow:    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
+  search:   <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  fix:      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  phone:    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.56a16 16 0 0 0 6 6l.93-.93a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
 };
 
 // ── Main stat card (top-border style) ────────────────────────────────────────
@@ -145,6 +149,138 @@ function SectionLabel({ children }) {
   );
 }
 
+// ── Customer Lookup widget ────────────────────────────────────────────────────
+function CustomerLookup() {
+  const navigate = useNavigate();
+  const [phone, setPhone]       = useState('');
+  const [result, setResult]     = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  const lookup = async () => {
+    const q = phone.trim();
+    if (!q) return;
+    setLoading(true); setResult(null);
+    try {
+      const r = await client.get(`/admin/customer-lookup?phone=${encodeURIComponent(q)}`);
+      setResult(r.data.data);
+    } catch {
+      setResult({ error: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const retryGrant = async (txnId) => {
+    setRetrying(true);
+    try {
+      await client.post(`/admin/transactions/${txnId}/retry-grant`, {});
+      const q = phone.trim();
+      const r = await client.get(`/admin/customer-lookup?phone=${encodeURIComponent(q)}`);
+      setResult(r.data.data);
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Could not grant access.';
+      if (msg.toLowerCase().includes('mac')) {
+        navigate('/transactions?status=ACCESS_FAILED');
+      }
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const { lastTransaction: tx, activeSession: sess } = result || {};
+  const hasIssue = tx?.status === 'ACCESS_FAILED';
+
+  return (
+    <div style={{
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: '14px', padding: '1.2rem 1.4rem', boxShadow: 'var(--shadow)',
+    }}>
+      <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        {I.phone} Customer Lookup
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <input
+          className="input"
+          placeholder="Phone number e.g. 0712345678"
+          value={phone}
+          onChange={(e) => { setPhone(e.target.value); setResult(null); }}
+          onKeyDown={(e) => e.key === 'Enter' && lookup()}
+          style={{ flex: 1, fontSize: '0.85rem' }}
+        />
+        <button
+          className="btn btn-primary"
+          onClick={lookup}
+          disabled={loading || !phone.trim()}
+          style={{ padding: '0 0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem' }}
+        >
+          {loading ? '…' : <>{I.search} Look up</>}
+        </button>
+      </div>
+
+      {result && !result.error && (
+        <div style={{ marginTop: '0.9rem', borderTop: '1px solid var(--border)', paddingTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {/* Active session */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+            <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>Session</span>
+            {sess ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--green)', fontWeight: 600 }}>Active — {sess.bundleId?.name}</span>
+                <span style={{ color: 'var(--text-3)', fontSize: '0.75rem' }}>
+                  expires {new Date(sess.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </span>
+            ) : (
+              <span style={{ color: 'var(--text-3)' }}>No active session</span>
+            )}
+          </div>
+
+          {/* Last payment */}
+          {tx && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text-3)', fontWeight: 500 }}>Last payment</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <span style={{ color: 'var(--text-2)' }}>KES {tx.amount} — {tx.bundleId?.name}</span>
+                {hasIssue ? (
+                  <span style={{
+                    background: 'var(--red-dim)', color: 'var(--red)', fontSize: '0.72rem',
+                    fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '5px',
+                  }}>NO INTERNET</span>
+                ) : (
+                  <span style={{
+                    background: 'var(--green-dim)', color: 'var(--green)', fontSize: '0.72rem',
+                    fontWeight: 700, padding: '0.15rem 0.45rem', borderRadius: '5px',
+                  }}>{tx.status}</span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Fix button when payment succeeded but no internet */}
+          {hasIssue && (
+            <button
+              className="btn btn-danger"
+              onClick={() => retryGrant(tx._id)}
+              disabled={retrying}
+              style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', alignSelf: 'flex-start' }}
+            >
+              {retrying ? 'Granting…' : <>{I.fix} Fix — Grant Internet Now</>}
+            </button>
+          )}
+
+          {!tx && !sess && (
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>No payment or session history found for this number.</div>
+          )}
+        </div>
+      )}
+
+      {result?.error && (
+        <div style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: 'var(--red)' }}>Lookup failed — check the number and try again.</div>
+      )}
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
@@ -168,7 +304,9 @@ export default function Dashboard() {
 
   if (!stats) return <div className="spinner" />;
 
-  const hasPendingSettlements = superAdmin && stats.pendingSettlements > 0;
+  const hasPendingSettlements  = superAdmin && stats.pendingSettlements > 0;
+  const hasPendingOperators   = superAdmin && stats.pendingOperatorsCount > 0;
+  const hasOfflineRouters     = superAdmin && stats.offlineOperatorsCount > 0;
   const freshLabel = lastUpdated ? (secondsAgo < 5 ? 'just now' : `${secondsAgo}s ago`) : '';
   const feePercent = stats.feePercent ?? 5;
 
@@ -202,19 +340,70 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── Pending settlements alert ── */}
-      {hasPendingSettlements && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem',
-          padding: '0.85rem 1.2rem', borderRadius: '12px', marginBottom: '1.75rem',
-          background: 'var(--orange-dim)', border: '1px solid #f59e0b44',
-          color: 'var(--orange)', fontSize: '0.85rem', fontWeight: 500,
-        }}>
-          {I.warning}
-          <span>
-            <strong>{fmt(stats.pendingSettlements)}</strong> pending settlements — action required.{' '}
-            <Link to="/settlements" style={{ color: 'var(--orange)', fontWeight: 700 }}>Settle now →</Link>
-          </span>
+      {/* ── Alerts ── */}
+      {(stats.accessFailedToday > 0 || hasOfflineRouters || hasPendingOperators || hasPendingSettlements) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1.75rem' }}>
+
+          {stats.accessFailedToday > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.85rem 1.2rem', borderRadius: '12px',
+              background: 'var(--red-dim)', border: '1px solid #ef444444',
+              color: 'var(--red)', fontSize: '0.85rem', fontWeight: 500,
+            }}>
+              {I.warning}
+              <span>
+                <strong>{stats.accessFailedToday} payment{stats.accessFailedToday > 1 ? 's' : ''}</strong> collected today but internet was not granted.{' '}
+                <Link to="/transactions?status=ACCESS_FAILED" style={{ color: 'var(--red)', fontWeight: 700 }}>Fix now →</Link>
+              </span>
+            </div>
+          )}
+
+          {hasOfflineRouters && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.85rem 1.2rem', borderRadius: '12px',
+              background: 'var(--red-dim)', border: '1px solid #ef444444',
+              color: 'var(--red)', fontSize: '0.85rem', fontWeight: 500,
+            }}>
+              {I.warning}
+              <span>
+                <strong>{stats.offlineOperatorsCount} router{stats.offlineOperatorsCount > 1 ? 's' : ''} offline</strong> — new sessions will fail for those operators.{' '}
+                <Link to="/operators" style={{ color: 'var(--red)', fontWeight: 700 }}>Check routers →</Link>
+              </span>
+            </div>
+          )}
+
+          {hasPendingOperators && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.85rem 1.2rem', borderRadius: '12px',
+              background: '#fef3c722', border: '1px solid #d9770644',
+              color: '#d97706', fontSize: '0.85rem', fontWeight: 500,
+            }}>
+              {I.warning}
+              <span>
+                <strong>{stats.pendingOperatorsCount} operator{stats.pendingOperatorsCount > 1 ? 's' : ''}</strong> waiting for approval.{' '}
+                <Link to="/operators" style={{ color: '#d97706', fontWeight: 700 }}>Review now →</Link>
+              </span>
+            </div>
+          )}
+
+          {hasPendingSettlements && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.85rem 1.2rem', borderRadius: '12px',
+              background: 'var(--orange-dim)', border: '1px solid #f59e0b44',
+              color: 'var(--orange)', fontSize: '0.85rem', fontWeight: 500,
+            }}>
+              {I.warning}
+              <span>
+                <strong>{fmt(stats.pendingSettlements)}</strong> pending settlements — action required.{' '}
+                <Link to="/settlements" style={{ color: 'var(--orange)', fontWeight: 700 }}>Settle now →</Link>
+              </span>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -282,6 +471,12 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      {/* ── Customer Lookup ── */}
+      <SectionLabel>Customer Lookup</SectionLabel>
+      <div style={{ marginBottom: '2rem' }}>
+        <CustomerLookup />
+      </div>
 
       {/* ── Quick Actions ── */}
       <SectionLabel>Quick Actions</SectionLabel>
