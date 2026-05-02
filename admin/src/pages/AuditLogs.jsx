@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import client from '../api/client';
 
 const ACTION_COLORS = {
+  ADMIN_LOGIN: '#6366f1',
   OPERATOR_CREATED: '#00c853', OPERATOR_UPDATED: '#2979ff',
   BUNDLE_CREATED: '#00c853', BUNDLE_UPDATED: '#2979ff', BUNDLE_DELETED: '#f44336',
   VOUCHERS_GENERATED: '#00c853', VOUCHER_REVOKED: '#f44336',
@@ -16,22 +17,25 @@ export default function AuditLogs() {
   const [page, setPage] = useState(1);
   const [filterAction, setFilterAction] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const LIMIT = 50;
 
-  const fetch = (p = page, action = filterAction) => {
+  const loadLogs = (p = page, action = filterAction) => {
     setLoading(true);
+    setError('');
     const qs = new URLSearchParams({ page: p, limit: LIMIT });
     if (action) qs.set('action', action);
     client.get(`/admin/audit-logs?${qs}`)
       .then((r) => { setLogs(r.data.data); setTotal(r.data.total); })
-      .catch(() => {})
+      .catch((err) => setError(err.response?.data?.message || err.message || 'Failed to load audit logs'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { loadLogs(); }, []);
 
   const actions = [
+    'ADMIN_LOGIN',
     'OPERATOR_CREATED', 'OPERATOR_UPDATED',
     'BUNDLE_CREATED', 'BUNDLE_UPDATED', 'BUNDLE_DELETED',
     'VOUCHERS_GENERATED', 'VOUCHER_REVOKED',
@@ -44,11 +48,11 @@ export default function AuditLogs() {
   const handleFilter = (val) => {
     setFilterAction(val);
     setPage(1);
-    fetch(1, val);
+    loadLogs(1, val);
   };
 
-  const goPrev = () => { const p = page - 1; setPage(p); fetch(p); };
-  const goNext = () => { const p = page + 1; setPage(p); fetch(p); };
+  const goPrev = () => { const p = page - 1; setPage(p); loadLogs(p); };
+  const goNext = () => { const p = page + 1; setPage(p); loadLogs(p); };
 
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -65,6 +69,12 @@ export default function AuditLogs() {
           {actions.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
       </div>
+
+      {error && (
+        <div style={{ padding: '0.85rem 1.2rem', borderRadius: '10px', marginBottom: '1rem', background: '#f4433622', border: '1px solid #f4433644', color: '#f44336', fontSize: '0.85rem' }}>
+          {error}
+        </div>
+      )}
 
       <div className="table-wrap">
         {loading ? <div className="spinner" /> : (

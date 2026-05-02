@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const AdminUser = require('../models/AdminUser');
 const { protect } = require('../middleware/authMiddleware');
+const { audit } = require('../utils/audit');
 
 const router = express.Router();
 
@@ -33,6 +34,12 @@ router.post('/login', async (req, res, next) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
+
+    audit({
+      actor: admin._id, actorModel: 'AdminUser', actorName: admin.name,
+      action: 'ADMIN_LOGIN',
+      meta: { email: admin.email, ip: req.ip },
+    });
 
     res.json({
       success: true,
