@@ -4,7 +4,7 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && cd portal && npm install && npm run build && cd ..
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -15,10 +15,18 @@ services:
         value: 8h
       - key: DARAJA_ENV
         value: sandbox
+      # Set these manually in the Render dashboard (never commit secrets):
+      - key: APP_URL
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
-      # Set these manually in the Render dashboard (never commit secrets):
       - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_SEED_TOKEN
         sync: false
       - key: DARAJA_CONSUMER_KEY
         sync: false
@@ -27,8 +35,6 @@ services:
       - key: DARAJA_SHORTCODE
         sync: false
       - key: DARAJA_PASSKEY
-        sync: false
-      - key: JWT_SECRET
         sync: false
       - key: MIKROTIK_HOST
         sync: false

@@ -136,7 +136,7 @@ const initiateB2C = async ({ phone, amount, settlementId, operatorName }) => {
     Amount: Math.floor(amount),
     PartyA: shortcode,
     PartyB: phone,
-    Remarks: `Settlement for ${operatorName} — ref ${settlementId}`,
+    Remarks: `Settlement for ${operatorName} — ref ${settlementId}`.slice(0, 100),
     QueueTimeOutURL: `${appUrl}/api/v1/payment/b2c-timeout`,
     ResultURL: `${appUrl}/api/v1/payment/b2c-callback`,
     Occasion: `SETTLE-${settlementId}`,

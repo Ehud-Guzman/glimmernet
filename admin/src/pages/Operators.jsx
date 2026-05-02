@@ -130,8 +130,8 @@ export default function Operators() {
   const [deleting, setDeleting] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [globalFeePercent, setGlobalFeePercent] = useState(5);
 
-  const globalFeePercent = parseFloat(import.meta.env.VITE_PLATFORM_FEE_PERCENT || '5');
   const isCreate = modal === 'create';
 
   const load = () => {
@@ -140,6 +140,12 @@ export default function Operators() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    client.get('/admin/stats').then((r) => {
+      if (r.data.data?.feePercent != null) setGlobalFeePercent(r.data.data.feePercent);
+    }).catch(() => {});
+  }, []);
 
   const openCreate = () => { setForm(EMPTY); setError(''); setRouterStatus(null); setPortalPassword(''); setModal('create'); };
   const openEdit = (op) => {
@@ -746,7 +752,7 @@ export default function Operators() {
                     Portal URL for MikroTik Hotspot
                   </div>
                   <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                    http://{form.mikrotikHost.startsWith('192') ? '<server-ip>' : form.mikrotikHost}:3000/?mac=$mac&amp;op={form.shortCode || modal.shortCode}
+                    {(import.meta.env.VITE_API_URL || '').replace(/\/api\/v1\/?$/, '') || 'https://your-backend-url'}/?mac=$mac&amp;op={form.shortCode || modal.shortCode}
                   </code>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.35rem' }}>
                     Set this as the Login page URL in MikroTik Hotspot settings.

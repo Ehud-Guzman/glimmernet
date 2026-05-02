@@ -131,19 +131,7 @@ router.post('/trial', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Free trial is not enabled at this location.' });
     }
 
-    // Atomically claim the trial slot — prevents TOCTOU race where two concurrent
-    // requests both pass the check before either writes $addToSet.
-    const claimed = await Device.findOneAndUpdate(
-      { macAddress: macUpper, trialsUsed: { $ne: operator._id } },
-      { phone, lastSeen: new Date(), $addToSet: { trialsUsed: operator._id } },
-      { upsert: true, new: true }
-    ).catch(() => null);
-
-    if (!claimed) {
-      return res.status(400).json({ success: false, message: 'You have already used your free trial here.' });
-    }
-
-    // Check no active session already exists
+    // Check for an existing active session before consuming the trial slot
     const existingSession = await Session.findOne({
       macAddress: macUpper,
       status: 'ACTIVE',
@@ -157,6 +145,18 @@ router.post('/trial', async (req, res, next) => {
         expiresAt: existingSession.expiresAt,
         resumed: true,
       });
+    }
+
+    // Atomically claim the trial slot — prevents TOCTOU race where two concurrent
+    // requests both pass the check before either writes $addToSet.
+    const claimed = await Device.findOneAndUpdate(
+      { macAddress: macUpper, trialsUsed: { $ne: operator._id } },
+      { phone, lastSeen: new Date(), $addToSet: { trialsUsed: operator._id } },
+      { upsert: true, new: true }
+    ).catch(() => null);
+
+    if (!claimed) {
+      return res.status(400).json({ success: false, message: 'You have already used your free trial here.' });
     }
 
     const trialBundle = await Bundle.findOne({

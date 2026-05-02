@@ -134,7 +134,7 @@ const operatorCreate = Joi.object({
   brandTagline:    Joi.string().trim().max(200).allow('', null).default(''),
   logoUrl:         Joi.string().allow('', null).default(''),
   accentColor:     Joi.string().trim().pattern(/^#[0-9a-fA-F]{6}$/).allow('', null).default('#00c853'),
-  hotspotLoginUrl: Joi.string().allow('', null).default(''),
+  hotspotLoginUrl: Joi.string().uri({ scheme: ['http', 'https'] }).allow('', null).default(''),
   trialMinutes:    Joi.number().integer().min(0).default(0),
   supportPhone:    Joi.string().trim().allow('', null).default(''),
   supportWhatsapp: Joi.string().trim().allow('', null).default(''),

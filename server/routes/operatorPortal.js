@@ -6,6 +6,7 @@ const Bundle = require('../models/Bundle');
 const Settlement = require('../models/Settlement');
 const Operator = require('../models/Operator');
 const { protectOperator } = require('../middleware/operatorAuthMiddleware');
+const { encrypt: encryptField } = require('../utils/fieldEncryption');
 const { createProvisionedSession } = require('../services/sessionService');
 const { settleOperator } = require('../services/settlementService');
 const { testConnection } = require('../services/mikrotikService');
@@ -231,6 +232,7 @@ router.put('/profile', validate(schemas.operatorProfileUpdate), async (req, res,
       updates.passwordChangedAt = new Date();
       delete updates.portalPassword;
     }
+    if (updates.mikrotikPass) updates.mikrotikPass = encryptField(updates.mikrotikPass);
 
     const op = await Operator.findByIdAndUpdate(
       req.operator._id,

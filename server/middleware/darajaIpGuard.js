@@ -33,8 +33,12 @@ const darajaIpGuard = async (req, res, next) => {
     }
 
     next();
-  } catch {
-    // Fail-open: if config is unreachable, allow the callback to avoid blocking real payments.
+  } catch (err) {
+    const envFallback = process.env.DARAJA_ENV || 'sandbox';
+    if (envFallback === 'production') {
+      logger.error('darajaIpGuard: config unreachable, blocking callback to prevent forgery', { error: err.message });
+      return res.status(503).json({ ResultCode: 1, ResultDesc: 'Service temporarily unavailable' });
+    }
     next();
   }
 };

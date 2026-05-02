@@ -117,49 +117,40 @@ const createProvisionedSession = async ({
   const password = generatePassword();
   const expiresAt = calculateExpiry(bundle, trialMinutes);
 
-  await provisionSessionAccess({
-    operator,
+  const session = await Session.create({
+    phone,
     username,
     password,
-    bundle,
-    comment,
+    macAddress: normalizedMac,
+    bundleId: bundle._id,
+    transactionId,
+    operatorId: operator?._id || null,
+    voucherId,
+    expiresAt,
+    isTrial,
   });
 
   try {
-    const session = await Session.create({
-      phone,
-      username,
-      password,
-      macAddress: normalizedMac,
-      bundleId: bundle._id,
-      transactionId,
-      operatorId: operator?._id || null,
-      voucherId,
-      expiresAt,
-      isTrial,
-    });
-
-    if (normalizedMac) {
-      await Device.findOneAndUpdate(
-        { macAddress: normalizedMac },
-        { phone, lastSeen: new Date(), $inc: { sessionCount: 1 } },
-        { upsert: true }
-      );
-    }
-
-    logger.info('Session created', { sessionId: session._id, username, phone });
-    return session;
-  } catch (err) {
-    try {
-      await removeHotspotUser(operator, username);
-    } catch (cleanupErr) {
-      logger.error('Failed to clean up MikroTik user after session persistence error', {
-        username,
-        message: cleanupErr.message,
-      });
-    }
-    throw err;
+    await provisionSessionAccess({ operator, username, password, bundle, comment });
+  } catch (mikrotikErr) {
+    await session.deleteOne().catch((e) =>
+      logger.error('Failed to remove session record after MikroTik provisioning failure', {
+        sessionId: session._id, username, message: e.message,
+      })
+    );
+    throw mikrotikErr;
   }
+
+  if (normalizedMac) {
+    await Device.findOneAndUpdate(
+      { macAddress: normalizedMac },
+      { phone, lastSeen: new Date(), $inc: { sessionCount: 1 } },
+      { upsert: true }
+    );
+  }
+
+  logger.info('Session created', { sessionId: session._id, username, phone });
+  return session;
 };
 
 const createSession = async (transaction) => {
@@ -177,7 +168,7 @@ const createSession = async (transaction) => {
     operator,
     transactionId: transaction._id,
     comment: `txn:${transaction._id}`,
-    usernameSeed: transaction.phone,
+    usernameSeed: transaction._id.toString(),
   });
 };
 

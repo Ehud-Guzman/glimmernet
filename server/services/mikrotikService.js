@@ -1,6 +1,7 @@
 const RouterOSAPI = require('node-routeros').RouterOSAPI;
 const configService = require('./configService');
 const logger = require('../utils/logger');
+const { decrypt } = require('../utils/fieldEncryption');
 
 /**
  * Build a RouterOS client.
@@ -16,7 +17,7 @@ const getClient = async (operator) => {
 
   const host = operator?.mikrotikHost || defaultHost;
   const user = operator?.mikrotikUser || defaultUser;
-  const password = operator?.mikrotikPass || defaultPass;
+  const password = decrypt(operator?.mikrotikPass || defaultPass);
   const port = operator?.mikrotikPort || Number(defaultPort);
 
   if (!host || !user || !password) {

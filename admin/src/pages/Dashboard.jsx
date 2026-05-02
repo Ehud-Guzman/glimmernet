@@ -170,7 +170,7 @@ export default function Dashboard() {
 
   const hasPendingSettlements = superAdmin && stats.pendingSettlements > 0;
   const freshLabel = lastUpdated ? (secondsAgo < 5 ? 'just now' : `${secondsAgo}s ago`) : '';
-  const feePercent = import.meta.env.VITE_PLATFORM_FEE_PERCENT || '5';
+  const feePercent = stats.feePercent ?? 5;
 
   return (
     <div style={{ maxWidth: 1100 }}>

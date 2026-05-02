@@ -10,19 +10,19 @@ const protect = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.admin = decoded;
 
-    // Block deactivated accounts on every request — not just at login
-    const user = await AdminUser.findById(decoded.id).select('isActive passwordChangedAt');
+    // Re-fetch isActive, passwordChangedAt, and role from DB on every request
+    // so demotions and deactivations take effect immediately without waiting for token expiry.
+    const user = await AdminUser.findById(decoded.id).select('isActive passwordChangedAt role');
     if (!user || !user.isActive) {
       return res.status(401).json({ success: false, message: 'Account is deactivated.' });
     }
 
-    // Invalidate tokens issued before the last password change
     if (user.passwordChangedAt && decoded.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
       return res.status(401).json({ success: false, message: 'Session expired after password change. Please log in again.' });
     }
 
+    req.admin = { ...decoded, role: user.role };
     next();
   } catch {
     res.status(401).json({ success: false, message: 'Token invalid or expired' });

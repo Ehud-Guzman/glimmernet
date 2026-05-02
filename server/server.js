@@ -20,6 +20,13 @@ if (missing.length) {
   process.exit(1);
 }
 
+if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length !== 64) {
+  logger.warn('ENCRYPTION_KEY is not set or invalid — MikroTik passwords will be stored unencrypted. Set a 64-char hex key.');
+}
+if (!process.env.APP_URL) {
+  logger.warn('APP_URL is not set — Daraja STK/B2C callbacks will fail in production.');
+}
+
 const start = async () => {
   await connectDB();
   await seedDefaults();

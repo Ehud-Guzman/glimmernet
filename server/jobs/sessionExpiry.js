@@ -5,7 +5,15 @@ const { removeHotspotUser } = require('../services/mikrotikService');
 const logger = require('../utils/logger');
 
 const startSessionExpiryJob = () => {
+  let isRunning = false;
+
   cron.schedule('*/5 * * * *', async () => {
+    if (isRunning) {
+      logger.warn('Session expiry job skipped — previous run still in progress');
+      return;
+    }
+    isRunning = true;
+    try {
     // ── 1. Mark expired sessions and attempt MikroTik removal ────────────────
     // Limit to 200 per run so a bulk expiry (e.g. after long downtime) doesn't
     // load an unbounded document set into memory.
@@ -70,6 +78,9 @@ const startSessionExpiryJob = () => {
       }
     } catch (err) {
       logger.error('Voucher expiry sweep failed', { message: err.message });
+    }
+    } finally {
+      isRunning = false;
     }
   });
 

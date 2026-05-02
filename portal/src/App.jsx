@@ -88,12 +88,12 @@ function applyBranding({ accentColor }) {
 }
 
 export function autoLogin(username, password, hotspotLoginUrl) {
-  // Priority: operator-configured URL → ?dst= from MikroTik redirect
-  const dst = hotspotLoginUrl || params.get('dst');
-  if (!dst) return; // portal opened outside MikroTik captive-portal flow
+  // Only submit to the operator-configured MikroTik login URL.
+  // Never use ?dst= — that is the post-login redirect destination, not the login endpoint.
+  if (!hotspotLoginUrl) return;
   const form = document.createElement('form');
   form.method = 'POST';
-  form.action = dst;
+  form.action = hotspotLoginUrl;
   [['username', username], ['password', password]].forEach(([name, value]) => {
     const input = document.createElement('input');
     input.type = 'hidden'; input.name = name; input.value = value;

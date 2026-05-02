@@ -16,6 +16,8 @@ const { settleOperator } = require('../services/settlementService');
 const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
 const { audit } = require('../utils/audit');
+const { encrypt: encryptField } = require('../utils/fieldEncryption');
+const configService = require('../services/configService');
 
 const router = express.Router();
 const isSuperAdmin = requireRole('superadmin');
@@ -408,7 +410,7 @@ router.post('/vouchers/generate', isSuperAdmin, validate(schemas.voucherGenerate
       action: 'VOUCHERS_GENERATED', targetModel: 'Bundle', targetId: bundle._id,
       meta: { batchId, quantity, type, bundleId, maxDevices },
     });
-    res.status(201).json({ success: true, batchId, count: codes.length, codes });
+    res.status(201).json({ success: true, batchId, count: codes.length });
   } catch (err) {
     next(err);
   }
@@ -482,6 +484,7 @@ router.post('/operators', isSuperAdmin, validate(schemas.operatorCreate), async 
     if (portalPassword) {
       operatorData.passwordHash = await bcrypt.hash(portalPassword, 12);
     }
+    if (operatorData.mikrotikPass) operatorData.mikrotikPass = encryptField(operatorData.mikrotikPass);
     const op = await Operator.create(operatorData);
     await audit({
       actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
@@ -502,6 +505,7 @@ router.put('/operators/:id', isSuperAdmin, validate(schemas.operatorUpdate), asy
       rest.passwordHash = await bcrypt.hash(portalPassword, 12);
       rest.passwordChangedAt = new Date();
     }
+    if (rest.mikrotikPass) rest.mikrotikPass = encryptField(rest.mikrotikPass);
     const op = await Operator.findByIdAndUpdate(req.params.id, rest, { new: true, runValidators: true });
     if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });
     await audit({
@@ -633,6 +637,7 @@ router.put('/settlements/:id/mark-paid', isSuperAdmin, async (req, res, next) =>
   try {
     const s = await Settlement.findById(req.params.id);
     if (!s) return res.status(404).json({ success: false, message: 'Settlement not found' });
+    if (s.status === 'PAID') return res.status(400).json({ success: false, message: 'Settlement is already marked as paid.' });
     s.status   = 'PAID';
     s.paidAt   = new Date();
     s.mpesaRef = req.body.mpesaRef || s.mpesaRef;
@@ -727,6 +732,8 @@ router.get('/stats', async (req, res, next) => {
       data.pendingSettlements   = pendingSettlements[0]?.total || 0;
       data.activeOperators      = activeOperators;
     }
+
+    data.feePercent = Number(await configService.get('platform_fee_percent', process.env.PLATFORM_FEE_PERCENT || 5));
 
     res.json({ success: true, data });
   } catch (err) {
