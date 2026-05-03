@@ -10,6 +10,51 @@ const STATUS_COLORS = {
 
 const fmt = (n) => `KES ${Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}`;
 
+function ReconciliationPanel() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    client.get('/admin/analytics/reconciliation')
+      .then((r) => setData(r.data.data))
+      .catch(() => {});
+  }, []);
+
+  if (!data) return null;
+
+  const hasIssues = data.stuckSettlements > 0 || data.recentFailures > 0;
+  if (!hasIssues) return null;
+
+  return (
+    <div style={{
+      background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+      borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1.25rem',
+      display: 'flex', gap: '2rem', alignItems: 'center', flexWrap: 'wrap',
+    }}>
+      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Reconciliation Alert
+      </div>
+      {data.stuckSettlements > 0 && (
+        <div style={{ fontSize: '0.83rem' }}>
+          <strong style={{ color: '#ef4444' }}>{data.stuckSettlements}</strong>
+          <span style={{ color: 'var(--text-3)', marginLeft: '0.35rem' }}>stuck in PROCESSING for &gt;24h</span>
+        </div>
+      )}
+      {data.recentFailures > 0 && (
+        <div style={{ fontSize: '0.83rem' }}>
+          <strong style={{ color: '#f59e0b' }}>{data.recentFailures}</strong>
+          <span style={{ color: 'var(--text-3)', marginLeft: '0.35rem' }}>failed payouts in last 24h</span>
+        </div>
+      )}
+      {data.paidLast24h > 0 && (
+        <div style={{ fontSize: '0.83rem', marginLeft: 'auto' }}>
+          <strong style={{ color: '#10b981' }}>{data.paidLast24h}</strong>
+          <span style={{ color: 'var(--text-3)', marginLeft: '0.35rem' }}>paid successfully in last 24h</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settlements() {
   const [settlements, setSettlements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +96,7 @@ export default function Settlements() {
 
   return (
     <>
+      <ReconciliationPanel />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div className="page-title" style={{ marginBottom: 0 }}>Settlements</div>
         <select

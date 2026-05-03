@@ -6,6 +6,7 @@ const Operator = require('../models/Operator');
 const Bundle = require('../models/Bundle');
 const { createProvisionedSession, syncSessionState } = require('../services/sessionService');
 const { sendTrialNotice } = require('../services/notificationService');
+const { getUsageStats } = require('../services/mikrotikService');
 const { createResumeToken, verifyResumeToken } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
@@ -256,7 +257,7 @@ router.get('/my', async (req, res, next) => {
       query.operatorId = operator._id;
     }
 
-    const [activeSession, recentSessions] = await Promise.all([
+    const [activeSession, recentSessions, recentTransactions] = await Promise.all([
       Session.findOne({ ...query, status: 'ACTIVE', $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] })
         .populate('bundleId', 'name price durationMinutes')
         .sort({ createdAt: -1 }),
@@ -264,6 +265,11 @@ router.get('/my', async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(5)
         .select('status startTime expiresAt isTrial bundleId createdAt')
+        .populate('bundleId', 'name price'),
+      Transaction.find({ macAddress: macUpper, status: 'SUCCESS' })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('amount mpesaReceiptNumber bundleId createdAt status')
         .populate('bundleId', 'name price'),
     ]);
 
@@ -278,11 +284,60 @@ router.get('/my', async (req, res, next) => {
           ? { status: activeSession.status, expiresAt: activeSession.expiresAt, startTime: activeSession.startTime, bundle: activeSession.bundleId, isTrial: activeSession.isTrial }
           : null,
         recentSessions,
+        recentTransactions,
       },
     });
   } catch (err) {
     next(err);
   }
+});
+
+// GET /api/v1/session/usage?mac=XX&op=SHORTCODE — real-time data/time remaining from MikroTik
+router.get('/usage', async (req, res, next) => {
+  try {
+    const mac = req.query.mac;
+    const opCode = req.query.op || '';
+    if (!mac) return res.status(400).json({ success: false, message: 'mac is required' });
+
+    const macUpper = mac.toUpperCase();
+    const query = { macAddress: macUpper, status: 'ACTIVE', $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] };
+
+    let operator = null;
+    if (opCode) {
+      operator = await Operator.findOne({ shortCode: opCode.toUpperCase(), status: 'ACTIVE' });
+      if (!operator) return res.json({ success: false, active: false });
+      query.operatorId = operator._id;
+    }
+
+    const session = await Session.findOne(query).populate('bundleId', 'name dataMB durationMinutes').sort({ createdAt: -1 });
+    if (!session) return res.json({ success: true, active: false });
+
+    // Fetch live bytes from MikroTik
+    let liveUsage = null;
+    try {
+      liveUsage = await getUsageStats(operator, session.username);
+    } catch { /* router unreachable — return cached DB values */ }
+
+    const bundle = session.bundleId;
+    const bytesIn  = liveUsage?.bytesIn  ?? session.bytesIn  ?? 0;
+    const bytesOut = liveUsage?.bytesOut ?? session.bytesOut ?? 0;
+    const totalBytes = bundle?.dataMB ? bundle.dataMB * 1024 * 1024 : null;
+    const usedBytes  = bytesIn + bytesOut;
+
+    res.json({
+      success: true,
+      active: true,
+      bundle: bundle ? { name: bundle.name, dataMB: bundle.dataMB, durationMinutes: bundle.durationMinutes } : null,
+      expiresAt: session.expiresAt,
+      minutesLeft: session.expiresAt ? Math.max(0, Math.round((new Date(session.expiresAt) - Date.now()) / 60000)) : null,
+      usage: {
+        bytesIn, bytesOut, usedBytes,
+        totalBytes,
+        percentUsed: totalBytes ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : null,
+        uptime: liveUsage?.uptime || null,
+      },
+    });
+  } catch (err) { next(err); }
 });
 
 router.get('/status/:checkoutRequestId', async (req, res, next) => {

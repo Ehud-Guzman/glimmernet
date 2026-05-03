@@ -15,6 +15,8 @@ import OperatorDashboard from './pages/OperatorDashboard';
 import Settings from './pages/Settings';
 import Analytics from './pages/Analytics';
 import AuditLogs from './pages/AuditLogs';
+import Disputes from './pages/Disputes';
+import NetworkHealth from './pages/NetworkHealth';
 import { isLoggedIn, isSuperAdmin } from './utils/auth';
 import { isOperatorLoggedIn } from './utils/operatorAuth';
 
@@ -62,6 +64,8 @@ export default function App() {
                 <Route path="/settings"   element={<SuperAdminRoute><Settings /></SuperAdminRoute>} />
                 <Route path="/analytics"  element={<SuperAdminRoute><Analytics /></SuperAdminRoute>} />
                 <Route path="/audit-logs" element={<SuperAdminRoute><AuditLogs /></SuperAdminRoute>} />
+                <Route path="/disputes"   element={<SuperAdminRoute><Disputes /></SuperAdminRoute>} />
+                <Route path="/health"     element={<SuperAdminRoute><NetworkHealth /></SuperAdminRoute>} />
               </Routes>
             </Layout>
           </PrivateRoute>

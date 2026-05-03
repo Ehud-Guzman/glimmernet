@@ -5,11 +5,12 @@ const Transaction = require('../models/Transaction');
 const Bundle = require('../models/Bundle');
 const Settlement = require('../models/Settlement');
 const Operator = require('../models/Operator');
+const Voucher = require('../models/Voucher');
 const { protectOperator } = require('../middleware/operatorAuthMiddleware');
 const { encrypt: encryptField } = require('../utils/fieldEncryption');
 const { createProvisionedSession } = require('../services/sessionService');
 const { settleOperator } = require('../services/settlementService');
-const { testConnection } = require('../services/mikrotikService');
+const { testConnection, removeHotspotUser } = require('../services/mikrotikService');
 const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
 const { audit } = require('../utils/audit');
@@ -27,7 +28,7 @@ router.get('/stats', async (req, res, next) => {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [activeSessions, revenueToday, revenueMonth, txnCount] = await Promise.all([
+    const [activeSessions, revenueToday, revenueMonth, txnCount, accessFailedCount] = await Promise.all([
       Session.countDocuments({ operatorId: opId, status: 'ACTIVE' }),
       Transaction.aggregate([
         { $match: { operatorId: opId, status: 'SUCCESS', createdAt: { $gte: todayStart } } },
@@ -38,6 +39,7 @@ router.get('/stats', async (req, res, next) => {
         { $group: { _id: null, total: { $sum: '$operatorNet' } } },
       ]),
       Transaction.countDocuments({ operatorId: opId, status: 'SUCCESS' }),
+      Transaction.countDocuments({ operatorId: opId, status: 'ACCESS_FAILED' }),
     ]);
 
     res.json({
@@ -49,6 +51,8 @@ router.get('/stats', async (req, res, next) => {
         walletBalance: req.operator.walletBalance,
         lifetimeGross: req.operator.lifetimeGross,
         txnCount,
+        accessFailedCount,
+        healthStatus:  req.operator.healthStatus,
       },
     });
   } catch (err) {
@@ -342,6 +346,98 @@ router.post('/settlements/request', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// DELETE /api/v1/operator/sessions/:id — force-terminate a session (manual override)
+router.delete('/sessions/:id', async (req, res, next) => {
+  try {
+    const session = await Session.findOne({ _id: req.params.id, operatorId: req.operator._id }).populate('operatorId');
+    if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+    await removeHotspotUser(session.operatorId, session.username);
+    session.status = 'TERMINATED';
+    session.mikrotikRemoved = true;
+    await session.save();
+    await audit({ actor: req.operator._id, actorModel: 'Operator', actorName: req.operator.name,
+      action: 'SESSION_TERMINATED', targetModel: 'Session', targetId: session._id,
+      meta: { username: session.username, macAddress: session.macAddress } });
+    res.json({ success: true, message: 'Session terminated' });
+  } catch (err) { next(err); }
+});
+
+// POST /api/v1/operator/transactions/:id/retry-grant — force-provision a failed transaction
+router.post('/transactions/:id/retry-grant', async (req, res, next) => {
+  try {
+    const txn = await Transaction.findOne({ _id: req.params.id, operatorId: req.operator._id })
+      .populate('bundleId').populate('operatorId');
+    if (!txn) return res.status(404).json({ success: false, message: 'Transaction not found' });
+    if (txn.status !== 'SUCCESS' && txn.status !== 'ACCESS_FAILED') {
+      return res.status(400).json({ success: false, message: 'Can only retry paid transactions where access was not granted' });
+    }
+    if (txn.sessionId) {
+      const existing = await Session.findOne({ _id: txn.sessionId, status: 'ACTIVE' });
+      if (existing) return res.status(400).json({ success: false, message: 'An active session already exists for this transaction' });
+    }
+    const mac = (req.body.macAddress || txn.macAddress || '').trim().toUpperCase();
+    if (!mac) return res.status(400).json({ success: false, message: 'macAddress required' });
+    const bundle = txn.bundleId?.toObject ? txn.bundleId.toObject() : txn.bundleId;
+    const session = await createProvisionedSession({
+      phone: txn.phone, macAddress: mac, bundle, operator: txn.operatorId,
+      transactionId: txn._id, usernameSeed: mac,
+    });
+    txn.status = 'SUCCESS'; txn.sessionId = session._id;
+    await txn.save();
+    await audit({ actor: req.operator._id, actorModel: 'Operator', actorName: req.operator.name,
+      action: 'SESSION_GRANTED', targetModel: 'Session', targetId: session._id,
+      meta: { transactionId: txn._id, phone: txn.phone, macAddress: mac, retried: true } });
+    res.status(201).json({ success: true, data: session });
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/operator/provision-failures — ACCESS_FAILED transactions for this operator
+router.get('/provision-failures', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const filter = { operatorId: req.operator._id, status: 'ACCESS_FAILED' };
+    const [txns, total] = await Promise.all([
+      Transaction.find(filter)
+        .populate('bundleId', 'name price')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * clampLimit(limit))
+        .limit(clampLimit(limit))
+        .select('-callbackPayload -__v'),
+      Transaction.countDocuments(filter),
+    ]);
+    res.json({ success: true, data: txns, total, page: Number(page) });
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/operator/vouchers/export — operator-scoped voucher CSV
+router.get('/vouchers/export', async (req, res, next) => {
+  try {
+    const { batchId, status } = req.query;
+    const filter = { operatorId: req.operator._id };
+    if (batchId) filter.batchId = batchId;
+    if (status)  filter.status  = status;
+
+    const vouchers = await Voucher.find(filter)
+      .populate('bundleId', 'name price')
+      .sort({ createdAt: -1 })
+      .limit(5000);
+
+    const rows = [
+      ['Code', 'Type', 'Bundle', 'Price (KES)', 'Status', 'Max Devices', 'Redeemed', 'Expires', 'Created', 'Note'],
+      ...vouchers.map((v) => [
+        v.code, v.type, v.bundleId?.name || '', v.bundleId?.price || '',
+        v.status, v.maxDevices, v.redemptions?.length ?? 0,
+        v.expiresAt ? v.expiresAt.toISOString().slice(0, 10) : 'Never',
+        v.createdAt.toISOString().slice(0, 10), v.note,
+      ]),
+    ];
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="vouchers.csv"');
+    res.send(csv);
+  } catch (err) { next(err); }
 });
 
 // GET /api/v1/operator/analytics — revenue by day (last 30 days)

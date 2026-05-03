@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import BundleSelector from './components/BundleSelector';
 import PaymentForm from './components/PaymentForm';
 import StatusPoller from './components/StatusPoller';
 import RedeemForm from './components/RedeemForm';
+import UsageWidget from './components/UsageWidget';
+import WalletPanel from './components/WalletPanel';
 import { useLang } from './context/LangContext';
 
 const params = new URLSearchParams(window.location.search);
@@ -146,6 +148,50 @@ const LangToggle = ({ lang, onToggle }) => (
   </button>
 );
 
+function InstallPrompt({ accentColor = '#00c853' }) {
+  const [prompt, setPrompt] = useState(null);
+  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem('pwa-dismissed') === '1');
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  if (!prompt || dismissed) return null;
+
+  const install = async () => {
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    if (outcome === 'accepted') setPrompt(null);
+    else { setDismissed(true); sessionStorage.setItem('pwa-dismissed', '1'); }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 16, left: 16, right: 16, zIndex: 9999,
+      background: '#1a1a1a', border: `1px solid ${accentColor}44`,
+      borderRadius: 14, padding: '0.9rem 1.1rem',
+      display: 'flex', alignItems: 'center', gap: '0.75rem',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      maxWidth: 480, margin: '0 auto',
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f1f5f9' }}>Add to Home Screen</div>
+        <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.15rem' }}>Get quick access without the browser chrome</div>
+      </div>
+      <button onClick={() => { setDismissed(true); sessionStorage.setItem('pwa-dismissed', '1'); }}
+        style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '1.1rem', cursor: 'pointer', padding: '0.2rem', lineHeight: 1 }}>
+        ×
+      </button>
+      <button onClick={install}
+        style={{ background: accentColor, color: '#fff', border: 'none', borderRadius: 9, padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+        Install
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const { lang, t, toggle: toggleLang } = useLang();
   const [step, setStep] = useState(STEP.LOADING);
@@ -237,6 +283,7 @@ export default function App() {
 
   return (
     <div className="portal-shell">
+      <InstallPrompt accentColor={accentColor} />
 
       <header className="portal-header">
         <div className="hero-badge mobile-badge">Fast captive WiFi</div>
@@ -328,6 +375,15 @@ export default function App() {
                 </div>
               );
             })()}
+            {MAC && (
+              <UsageWidget
+                mac={MAC}
+                operatorShortCode={OPERATOR}
+                expiresAt={resumedSession.expiresAt}
+                accentColor={accentColor}
+              />
+            )}
+            <WalletPanel operatorShortCode={OPERATOR} accentColor={accentColor} />
             <button
               className="btn-pay btn-pay-compact"
               style={{ marginTop: '1rem' }}

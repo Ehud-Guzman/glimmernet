@@ -8,6 +8,7 @@ const EMPTY = {
   status: 'ACTIVE', brandName: '', accentColor: '#00c853',
   brandTagline: '', logoUrl: '', supportWhatsapp: '', supportEmail: '',
   hotspotLoginUrl: '', trialMinutes: '0', supportPhone: '',
+  referralCommissionPercent: '',
 };
 
 const fmt = (n) => `KES ${Number(n).toLocaleString('en-KE', { minimumFractionDigits: 2 })}`;
@@ -163,6 +164,7 @@ export default function Operators() {
       supportPhone: op.supportPhone || '',
       supportWhatsapp: op.supportWhatsapp || '',
       supportEmail: op.supportEmail || '',
+      referralCommissionPercent: op.referralCommissionPercent != null ? String(op.referralCommissionPercent) : '',
     });
     setError(''); setRouterStatus(null); setPortalPassword(''); setActiveTab('basics'); setModal(op);
   };
@@ -454,9 +456,15 @@ export default function Operators() {
                   borderTop: '1px solid var(--border)',
                   background: 'var(--surface-2)',
                 }}>
-                  <code style={{ fontSize: '0.72rem', color, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: '4px', padding: '1px 6px', letterSpacing: '0.05em', marginRight: 'auto' }}>
+                  <code style={{ fontSize: '0.72rem', color, background: `${color}18`, border: `1px solid ${color}30`, borderRadius: '4px', padding: '1px 6px', letterSpacing: '0.05em' }}>
                     {op.shortCode}
                   </code>
+                  {op.referralCode && (
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-3)', fontFamily: 'monospace', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '4px', padding: '1px 5px', marginRight: 'auto' }}>
+                      ref:{op.referralCode}
+                    </span>
+                  )}
+                  {!op.referralCode && <span style={{ marginRight: 'auto' }} />}
                   {op.status === 'PENDING' && (
                     <button className="btn btn-primary"
                       style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem', background: '#d97706', borderColor: '#d97706' }}
@@ -639,18 +647,50 @@ export default function Operators() {
                   </div>
 
                   <Section label="Billing" />
-                  <div className="form-group">
-                    <label>Platform Fee %</label>
-                    <input
-                      type="number" min={0} max={100} step={0.5}
-                      value={form.platformFeePercent}
-                      placeholder={`Leave blank for global default (${globalFeePercent}%)`}
-                      onChange={(e) => setField('platformFeePercent', e.target.value)}
-                    />
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
-                      Overrides the global {globalFeePercent}% fee for this operator only.
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group">
+                      <label>Platform Fee %</label>
+                      <input
+                        type="number" min={0} max={100} step={0.5}
+                        value={form.platformFeePercent}
+                        placeholder={`Leave blank for global default (${globalFeePercent}%)`}
+                        onChange={(e) => setField('platformFeePercent', e.target.value)}
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                        Overrides the global {globalFeePercent}% fee for this operator only.
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Referral Commission %</label>
+                      <input
+                        type="number" min={0} max={50} step={0.5}
+                        value={form.referralCommissionPercent}
+                        placeholder="e.g. 5 (0 = disabled)"
+                        onChange={(e) => setField('referralCommissionPercent', e.target.value)}
+                      />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: '0.2rem' }}>
+                        % of referred operator revenue paid as referral commission.
+                      </div>
                     </div>
                   </div>
+                  {!isCreate && modal?.referralCode && (
+                    <div style={{
+                      marginTop: '0.5rem', padding: '0.75rem 1rem', borderRadius: '8px',
+                      background: 'var(--surface-2)', border: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Code</div>
+                        <code style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent)' }}>{modal.referralCode}</code>
+                      </div>
+                      {(modal.lifetimeReferralEarnings || 0) > 0 && (
+                        <div style={{ marginLeft: 'auto' }}>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Earnings</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--green)' }}>{fmt(modal.lifetimeReferralEarnings)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 

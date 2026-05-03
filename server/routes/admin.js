@@ -20,6 +20,8 @@ const { encrypt: encryptField } = require('../utils/fieldEncryption');
 const logger = require('../utils/logger');
 const configService = require('../services/configService');
 
+const OperatorRouter = require('../models/OperatorRouter');
+
 const router = express.Router();
 const isSuperAdmin = requireRole('superadmin');
 
@@ -785,6 +787,62 @@ router.get('/stats', async (req, res, next) => {
   }
 });
 
+// ── Bulk operations (superadmin only) ─────────────────────────────────────────
+
+router.post('/bulk/operators/status', isSuperAdmin, async (req, res, next) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || !ids.length || !['ACTIVE', 'SUSPENDED'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'ids[] and status (ACTIVE|SUSPENDED) are required' });
+    }
+    const result = await Operator.updateMany({ _id: { $in: ids } }, { $set: { status } });
+    await audit({ actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'BULK_OPERATOR_STATUS', targetModel: 'Operator', targetId: null,
+      meta: { ids, status, modifiedCount: result.modifiedCount } });
+    res.json({ success: true, modifiedCount: result.modifiedCount });
+  } catch (err) { next(err); }
+});
+
+router.post('/bulk/operators/settle', isSuperAdmin, async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ success: false, message: 'ids[] is required' });
+    }
+    const { settleOperator } = require('../services/settlementService');
+    const results = await Promise.allSettled(
+      ids.map((id) => settleOperator({ operatorId: id, amount: 999999, method: 'B2C', adminId: req.admin.id, notes: 'Bulk settlement' }))
+    );
+    const settled = results.filter((r) => r.status === 'fulfilled').length;
+    const failed  = results.filter((r) => r.status === 'rejected').map((r, i) => ({ id: ids[i], reason: r.reason?.message }));
+    await audit({ actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'BULK_SETTLEMENT', targetModel: 'Operator', targetId: null, meta: { ids, settled, failed: failed.length } });
+    res.json({ success: true, settled, failed });
+  } catch (err) { next(err); }
+});
+
+router.post('/bulk/sessions/terminate', isSuperAdmin, async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ success: false, message: 'ids[] is required' });
+    }
+    const sessions = await Session.find({ _id: { $in: ids } }).populate('operatorId');
+    let terminated = 0;
+    for (const s of sessions) {
+      try {
+        await removeHotspotUser(s.operatorId, s.username);
+        s.status = 'TERMINATED'; s.mikrotikRemoved = true;
+        await s.save();
+        terminated++;
+      } catch { /* log but continue */ }
+    }
+    await audit({ actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'BULK_SESSION_TERMINATE', targetModel: 'Session', targetId: null, meta: { ids, terminated } });
+    res.json({ success: true, terminated });
+  } catch (err) { next(err); }
+});
+
 // ── Customer lookup by phone ───────────────────────────────────────────────────
 
 router.get('/customer-lookup', async (req, res, next) => {
@@ -864,6 +922,22 @@ router.post('/transactions/:id/retry-grant', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// ── Network health — all operator routers ─────────────────────────────────────
+
+router.get('/network/health', isSuperAdmin, async (req, res, next) => {
+  try {
+    const routers = await OperatorRouter.find()
+      .populate('operatorId', 'name shortCode')
+      .select('-pass')
+      .sort({ operatorId: 1, name: 1 });
+
+    const summary = { total: routers.length, ok: 0, down: 0, unknown: 0 };
+    for (const r of routers) summary[r.healthStatus.toLowerCase()]++;
+
+    res.json({ success: true, data: routers, summary });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

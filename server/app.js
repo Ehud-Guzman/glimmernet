@@ -6,17 +6,21 @@ const fs = require('fs');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const configService = require('./services/configService');
 
-const bundlesRouter      = require('./routes/bundles');
-const paymentRouter      = require('./routes/payment');
-const sessionRouter      = require('./routes/session');
-const redeemRouter       = require('./routes/redeem');
-const authRouter         = require('./routes/auth');
-const adminRouter        = require('./routes/admin');
-const operatorAuthRouter = require('./routes/operatorAuth');
-const operatorPortalRouter = require('./routes/operatorPortal');
-const settingsRouter     = require('./routes/settings');
-const analyticsRouter    = require('./routes/analytics');
-const errorHandler       = require('./middleware/errorHandler');
+const bundlesRouter         = require('./routes/bundles');
+const paymentRouter         = require('./routes/payment');
+const sessionRouter         = require('./routes/session');
+const redeemRouter          = require('./routes/redeem');
+const authRouter            = require('./routes/auth');
+const adminRouter           = require('./routes/admin');
+const operatorAuthRouter    = require('./routes/operatorAuth');
+const operatorPortalRouter  = require('./routes/operatorPortal');
+const operatorRoutersRouter = require('./routes/operatorRouters');
+const operatorSubUsersRouter= require('./routes/operatorSubUsers');
+const settingsRouter        = require('./routes/settings');
+const analyticsRouter       = require('./routes/analytics');
+const disputesRouter        = require('./routes/disputes');
+const walletRouter          = require('./routes/wallet');
+const errorHandler          = require('./middleware/errorHandler');
 
 const app = express();
 
@@ -146,18 +150,26 @@ app.use('/api/v1/operator',                      operatorWriteLimiter);
 app.use('/api/v1/admin/sessions/export',         exportLimiter);
 app.use('/api/v1/admin/transactions/export',     exportLimiter);
 app.use('/api/v1/admin/vouchers/export',         exportLimiter);
+app.use('/api/v1/operator/vouchers/export',      exportLimiter);
+app.use('/api/v1/disputes',                      redeemLimiter); // same anti-spam rate as voucher redemption
+app.use('/api/v1/operator/sub-users',            operatorWriteLimiter);
+app.use('/api/v1/operator/routers',              operatorWriteLimiter);
 app.use('/api/',                                 generalLimiter);
 
-app.use('/api/v1/bundles',         bundlesRouter);
-app.use('/api/v1/payment',         paymentRouter);
-app.use('/api/v1/session',         sessionRouter);
-app.use('/api/v1/redeem',          redeemRouter);
-app.use('/api/v1/auth',            authRouter);
-app.use('/api/v1/admin',           adminRouter);
-app.use('/api/v1/operator/auth',   operatorAuthRouter);
-app.use('/api/v1/operator',        operatorPortalRouter);
-app.use('/api/v1/admin/settings',  settingsRouter);
-app.use('/api/v1/admin/analytics', analyticsRouter);
+app.use('/api/v1/bundles',                 bundlesRouter);
+app.use('/api/v1/payment',                 paymentRouter);
+app.use('/api/v1/session',                 sessionRouter);
+app.use('/api/v1/redeem',                  redeemRouter);
+app.use('/api/v1/auth',                    authRouter);
+app.use('/api/v1/admin',                   adminRouter);
+app.use('/api/v1/operator/auth',           operatorAuthRouter);
+app.use('/api/v1/operator/routers',        operatorRoutersRouter);
+app.use('/api/v1/operator/sub-users',      operatorSubUsersRouter);
+app.use('/api/v1/operator',                operatorPortalRouter);
+app.use('/api/v1/admin/settings',          settingsRouter);
+app.use('/api/v1/admin/analytics',         analyticsRouter);
+app.use('/api/v1/disputes',                disputesRouter);
+app.use('/api/v1/wallet',                  walletRouter);
 
 // Serve built portal only when dist exists (local dev / self-hosted; skipped on Render)
 const portalDist = path.join(__dirname, '../portal/dist');

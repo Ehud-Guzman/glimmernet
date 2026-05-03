@@ -8,7 +8,8 @@ const GROUP_LABELS = {
   billing: 'Billing & Fees',
   mpesa: 'M-Pesa / Daraja',
   mikrotik: 'MikroTik',
-  notifications: 'SMS',
+  notifications: 'SMS & WhatsApp',
+  email: 'SMTP / Email',
   support: 'Support',
   security: 'Security',
   general: 'General',
@@ -46,6 +47,11 @@ const GROUP_ICONS = {
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
     </svg>
   ),
+  email: (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+    </svg>
+  ),
   general: (
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3"/>
@@ -54,7 +60,7 @@ const GROUP_ICONS = {
   ),
 };
 
-const GROUP_ORDER = ['billing', 'mpesa', 'mikrotik', 'notifications', 'support', 'security', 'general'];
+const GROUP_ORDER = ['billing', 'mpesa', 'mikrotik', 'notifications', 'email', 'support', 'security', 'general'];
 
 const GROUP_HELP = {
   billing: {
@@ -107,6 +113,15 @@ const GROUP_HELP = {
       'Never reuse this secret across other services.',
     ],
   },
+  email: {
+    summary: 'SMTP settings for outbound operator report emails. Requires nodemailer-compatible mail server credentials.',
+    tips: [
+      'Use port 587 with STARTTLS (smtp_secure = false) for most providers including Gmail and Outlook.',
+      'For Gmail, enable 2FA and generate an App Password — do not use your main account password.',
+      'Set smtp_from to match the authenticated sender address to avoid rejection by mail servers.',
+      'Test by enabling a single operator report — check that email arrives before enabling globally.',
+    ],
+  },
   general: {
     summary: 'Global platform identity — business name, currency, and timezone shown across the system.',
     tips: [
@@ -149,7 +164,7 @@ export default function Settings() {
   const [revealed, setRevealed] = useState({});
   const [activeTab, setActiveTab] = useState(null);
   const [hoveredRow, setHoveredRow] = useState(null);
-  const [helpOpen, setHelpOpen] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(() => localStorage.getItem('settings_help_dismissed') !== '1');
 
   useEffect(() => {
     axios.get('/api/v1/admin/settings', api())
@@ -312,7 +327,7 @@ export default function Settings() {
               </span>
               {GROUP_HELP[activeTab] && (
                 <button
-                  onClick={() => setHelpOpen((v) => !v)}
+                  onClick={() => setHelpOpen((v) => { if (v) localStorage.setItem('settings_help_dismissed', '1'); else localStorage.removeItem('settings_help_dismissed'); return !v; })}
                   title={helpOpen ? 'Hide guide' : 'Show guide'}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.3rem',
@@ -355,7 +370,7 @@ export default function Settings() {
                   {h.summary}
                 </p>
                 <button
-                  onClick={() => setHelpOpen(false)}
+                  onClick={() => { localStorage.setItem('settings_help_dismissed', '1'); setHelpOpen(false); }}
                   style={{
                     flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
                     color: 'var(--text-3)', fontSize: '1rem', lineHeight: 1, padding: '0 2px',

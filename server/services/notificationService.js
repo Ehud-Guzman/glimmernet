@@ -114,4 +114,82 @@ const sendTrialNotice = async ({ phone, brandName, trialMinutes, supportPhone })
   }
 };
 
-module.exports = { sendPaymentReceipt, sendTrialNotice, sendSms, isConfigured };
+/**
+ * Send a WhatsApp message via Africa's Talking WhatsApp API.
+ * Falls back silently if WhatsApp is not configured.
+ */
+const sendWhatsApp = async ({ to, message }) => {
+  const [apiKey, username, enabled] = await Promise.all([
+    configService.get('at_api_key', ''),
+    configService.get('at_username', ''),
+    configService.get('whatsapp_enabled', false),
+  ]);
+  if (!enabled || !apiKey || !username) return;
+
+  const phone = toInternational(to);
+  try {
+    await axios.post(
+      'https://api.africastalking.com/version1/messaging/whatsapp',
+      new URLSearchParams({ username, to: phone, message }).toString(),
+      {
+        headers: {
+          apiKey,
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
+    logger.info('WhatsApp message sent', { to: phone });
+  } catch (err) {
+    logger.warn('WhatsApp send failed', { to: phone, message: err.response?.data || err.message });
+  }
+};
+
+/**
+ * Send a notification via all enabled channels (SMS + WhatsApp if both configured).
+ */
+const sendNotification = async ({ to, message }) => {
+  await Promise.allSettled([
+    isConfigured().then((ok) => ok ? sendSms({ to, message }) : null),
+    sendWhatsApp({ to, message }),
+  ]);
+};
+
+/**
+ * Send an 80% data usage alert to a customer.
+ */
+const sendDataUsageAlert = async ({ phone, brandName, percentUsed, bundleName, supportPhone }) => {
+  const msg = [
+    `${brandName}: Data Alert`,
+    `You've used ${Math.round(percentUsed)}% of your ${bundleName} bundle.`,
+    'Top up now to stay connected.',
+    supportPhone ? `Help: ${supportPhone}` : null,
+  ].filter(Boolean).join('\n');
+
+  try {
+    await sendNotification({ to: phone, message: msg });
+    logger.info('Data usage alert sent', { phone, percentUsed });
+  } catch (err) {
+    logger.warn('Data usage alert failed', { phone, message: err.message });
+  }
+};
+
+/**
+ * Send session expiry reminder (e.g. 15 min before expiry).
+ */
+const sendExpiryReminder = async ({ phone, brandName, minutesLeft, supportPhone }) => {
+  const msg = [
+    `${brandName}: Your session expires in ${minutesLeft} minute${minutesLeft !== 1 ? 's' : ''}.`,
+    'Top up to stay connected.',
+    supportPhone ? `Help: ${supportPhone}` : null,
+  ].filter(Boolean).join('\n');
+
+  try {
+    await sendNotification({ to: phone, message: msg });
+    logger.info('Expiry reminder sent', { phone, minutesLeft });
+  } catch (err) {
+    logger.warn('Expiry reminder failed', { phone, message: err.message });
+  }
+};
+
+module.exports = { sendPaymentReceipt, sendTrialNotice, sendSms, sendWhatsApp, sendNotification, sendDataUsageAlert, sendExpiryReminder, isConfigured };

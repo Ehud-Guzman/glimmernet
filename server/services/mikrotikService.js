@@ -5,9 +5,17 @@ const { decrypt } = require('../utils/fieldEncryption');
 
 /**
  * Build a RouterOS client.
- * Operator-level settings take priority over the platform defaults stored in the DB.
+ * Priority: explicit router doc > operator-level settings > platform defaults.
+ * Pass a router doc (OperatorRouter) as the second argument to target a sub-router.
  */
-const getClient = async (operator) => {
+const getClient = async (operator, router = null) => {
+  // Sub-router takes full precedence when provided
+  if (router?.host) {
+    const password = decrypt(router.pass || '');
+    if (!password) throw new Error(`MikroTik password not set for router: ${router.name}`);
+    return new RouterOSAPI({ host: router.host, user: router.user, password, port: router.port || 8728, timeout: 10 });
+  }
+
   const [defaultHost, defaultUser, defaultPass, defaultPort] = await Promise.all([
     configService.get('mikrotik_host', ''),
     configService.get('mikrotik_user', 'admin'),
@@ -99,4 +107,57 @@ const testConnection = async (operator) => {
   }
 };
 
-module.exports = { addHotspotUser, removeHotspotUser, getActiveSession, getHotspotUser, testConnection };
+/**
+ * Get real-time usage stats for a hotspot user from the active sessions table.
+ * Returns { bytesIn, bytesOut, uptime } or null if user not active.
+ */
+const getUsageStats = async (operator, username, router = null) => {
+  const client = await getClient(operator, router);
+  await client.connect();
+  try {
+    const sessions = await client.write('/ip/hotspot/active/print', [`?user=${username}`]);
+    if (!sessions.length) return null;
+    const s = sessions[0];
+    return {
+      bytesIn:  parseInt(s['bytes-in']  || '0', 10),
+      bytesOut: parseInt(s['bytes-out'] || '0', 10),
+      uptime:   s.uptime || '',
+    };
+  } finally {
+    client.close();
+  }
+};
+
+/**
+ * Kick (disconnect) a user from the active session table without removing their user account.
+ * Useful for immediate disconnect without full session termination.
+ */
+const kickActiveSession = async (operator, username, router = null) => {
+  const client = await getClient(operator, router);
+  await client.connect();
+  try {
+    const sessions = await client.write('/ip/hotspot/active/print', [`?user=${username}`]);
+    for (const s of sessions) {
+      await client.write('/ip/hotspot/active/remove', [`=.id=${s['.id']}`]).catch(() => {});
+    }
+    logger.info('MikroTik active session kicked', { username });
+  } finally {
+    client.close();
+  }
+};
+
+/**
+ * Test connection to a specific sub-router (OperatorRouter doc).
+ */
+const testRouterConnection = async (router) => {
+  const client = await getClient(null, router);
+  await client.connect();
+  try {
+    const identity = await client.write('/system/identity/print');
+    return { identity: identity[0]?.name || 'unknown' };
+  } finally {
+    client.close();
+  }
+};
+
+module.exports = { addHotspotUser, removeHotspotUser, getActiveSession, getHotspotUser, testConnection, getUsageStats, kickActiveSession, testRouterConnection };

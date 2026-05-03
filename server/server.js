@@ -1,13 +1,16 @@
 require('dotenv').config();
 const app = require('./app');
 const connectDB = require('./config/db');
-const startSessionExpiryJob = require('./jobs/sessionExpiry');
-const startProvisionRetryJob    = require('./jobs/provisionRetry');
-const startExpiryReminderJob    = require('./jobs/expiryReminder');
-const startNetworkHealthCheckJob = require('./jobs/networkHealthCheck');
+const startSessionExpiryJob            = require('./jobs/sessionExpiry');
+const startProvisionRetryJob           = require('./jobs/provisionRetry');
+const startExpiryReminderJob           = require('./jobs/expiryReminder');
+const startNetworkHealthCheckJob       = require('./jobs/networkHealthCheck');
 const startAutoSettlementJob           = require('./jobs/autoSettlement');
 const startSettlementReconciliationJob = require('./jobs/settlementReconciliation');
 const startUptimePing                  = require('./jobs/uptimePing');
+const startDataUsageAlertJob           = require('./jobs/dataUsageAlert');
+const startOperatorReportJob           = require('./jobs/operatorReport');
+const startWebhookRetryJob             = require('./jobs/webhookRetry');
 const { seedDefaults } = require('./routes/settings');
 const logger = require('./utils/logger');
 
@@ -37,6 +40,9 @@ const start = async () => {
   startAutoSettlementJob();
   startSettlementReconciliationJob();
   startUptimePing();
+  startDataUsageAlertJob();
+  startOperatorReportJob();
+  startWebhookRetryJob();
   app.listen(PORT, () => logger.info(`Server running on port ${PORT}`));
 };
 

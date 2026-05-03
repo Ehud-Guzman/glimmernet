@@ -22,11 +22,12 @@ const fmtDuration = (mins) => {
 };
 
 const STAT_META = {
-  activeSessions:   { label: 'Active Sessions',     color: 'var(--accent)',  icon: '📡' },
-  revenueToday:     { label: 'Revenue Today',        color: 'var(--green)',   icon: '📈', fmt: true, sub: 'your net after fees' },
-  revenueMonth:     { label: 'Revenue This Month',   color: 'var(--blue)',    icon: '📅', fmt: true, sub: 'your net after fees' },
-  walletBalance:    { label: 'Wallet Balance',        color: 'var(--purple)',  icon: '💳', fmt: true, sub: 'pending payout' },
-  txnCount:         { label: 'Total Transactions',   color: 'var(--orange)',  icon: '🔄' },
+  activeSessions:    { label: 'Active Sessions',     color: 'var(--accent)',  icon: '📡' },
+  revenueToday:      { label: 'Revenue Today',        color: 'var(--green)',   icon: '📈', fmt: true, sub: 'your net after fees' },
+  revenueMonth:      { label: 'Revenue This Month',   color: 'var(--blue)',    icon: '📅', fmt: true, sub: 'your net after fees' },
+  walletBalance:     { label: 'Wallet Balance',        color: 'var(--purple)',  icon: '💳', fmt: true, sub: 'pending payout' },
+  txnCount:          { label: 'Total Transactions',   color: 'var(--orange)',  icon: '🔄' },
+  accessFailedCount: { label: 'Provision Failures',  color: '#ef4444',        icon: '⚠️', sub: 'paid but no access' },
 };
 
 const StatCard = ({ id, value }) => {
@@ -789,6 +790,455 @@ function SetupChecklist({ profile, bundles, txnCount, onGoTo }) {
   );
 }
 
+// ── Provision Failures Tab ────────────────────────────────────────────────────
+function FailuresTab({ failures, onRetry }) {
+  const [retrying, setRetrying] = useState({});
+  const [msgs, setMsgs] = useState({});
+
+  const retry = async (txn) => {
+    setRetrying((p) => ({ ...p, [txn._id]: true }));
+    setMsgs((p) => ({ ...p, [txn._id]: '' }));
+    try {
+      await apiPost(`/transactions/${txn._id}/retry-grant`, { macAddress: txn.macAddress });
+      setMsgs((p) => ({ ...p, [txn._id]: 'Granted!' }));
+      onRetry();
+    } catch (e) {
+      setMsgs((p) => ({ ...p, [txn._id]: e.response?.data?.message || 'Failed' }));
+    } finally {
+      setRetrying((p) => ({ ...p, [txn._id]: false }));
+    }
+  };
+
+  if (!failures.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)', fontSize: '0.88rem' }}>
+        No provision failures — all paid sessions were granted successfully.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
+        These customers paid successfully but did not receive internet access. Use Retry Grant to provision them now.
+      </p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Phone</th><th>Bundle</th><th>Amount</th><th>MAC</th><th>Receipt</th><th></th></tr>
+          </thead>
+          <tbody>
+            {failures.map((t) => (
+              <tr key={t._id}>
+                <td style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                  {new Date(t.createdAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                </td>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{t.phone}</td>
+                <td>{t.bundleId?.name || '—'}</td>
+                <td style={{ fontWeight: 600 }}>{fmt(t.amount)}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-3)' }}>{t.macAddress || '—'}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-3)' }}>{t.mpesaReceiptNumber || '—'}</td>
+                <td>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-start' }}>
+                    <button className="btn btn-sm btn-primary" onClick={() => retry(t)} disabled={retrying[t._id]}>
+                      {retrying[t._id] ? 'Granting…' : 'Retry Grant'}
+                    </button>
+                    {msgs[t._id] && (
+                      <span style={{ fontSize: '0.72rem', color: msgs[t._id] === 'Granted!' ? 'var(--green)' : 'var(--red)' }}>
+                        {msgs[t._id]}
+                      </span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ── Routers Tab ───────────────────────────────────────────────────────────────
+const EMPTY_ROUTER = { name: '', host: '', port: '8728', user: '', pass: '', hotspotServer: 'hotspot1', isActive: true };
+
+function RouterModal({ router, onClose, onSuccess }) {
+  const isEdit = !!router?._id;
+  const [form, setForm] = useState(router ? {
+    name: router.name, host: router.host, port: String(router.port || 8728),
+    user: router.user, pass: '', hotspotServer: router.hotspotServer || 'hotspot1', isActive: router.isActive,
+  } : EMPTY_ROUTER);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testMsg, setTestMsg] = useState('');
+  const [err, setErr] = useState('');
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const testConn = async () => {
+    setTesting(true); setTestMsg('');
+    try {
+      await apiPost(`/routers/${router?._id || 'new'}/test`, form);
+      setTestMsg('Connected!');
+    } catch (e) {
+      setTestMsg(e.response?.data?.message || 'Connection failed');
+    } finally { setTesting(false); }
+  };
+
+  const submit = async () => {
+    if (!form.name || !form.host || !form.user) { setErr('Name, host and username are required.'); return; }
+    if (!isEdit && !form.pass) { setErr('Password is required.'); return; }
+    setSaving(true); setErr('');
+    try {
+      const payload = { ...form, port: Number(form.port) || 8728 };
+      if (isEdit) await apiPut(`/routers/${router._id}`, payload);
+      else await apiPost('/routers', payload);
+      onSuccess();
+    } catch (e) {
+      setErr(e.response?.data?.message || 'Failed to save router.');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h3 style={{ margin: '0 0 1.25rem', fontSize: '1.05rem' }}>{isEdit ? 'Edit Router' : 'Add Router'}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="form-group" style={{ gridColumn: '1/-1' }}>
+            <label>Display Name *</label>
+            <input className="input" placeholder="e.g. Ground Floor" value={form.name} onChange={(e) => set('name', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Host / IP *</label>
+            <input className="input" placeholder="192.168.88.1" value={form.host} onChange={(e) => set('host', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>API Port</label>
+            <input className="input" type="number" value={form.port} onChange={(e) => set('port', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>API Username *</label>
+            <input className="input" placeholder="admin" value={form.user} onChange={(e) => set('user', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Password {isEdit ? '(leave blank to keep)' : '*'}</label>
+            <input className="input" type="password" value={form.pass} onChange={(e) => set('pass', e.target.value)} autoComplete="new-password" />
+          </div>
+          <div className="form-group">
+            <label>Hotspot Server</label>
+            <input className="input" placeholder="hotspot1" value={form.hotspotServer} onChange={(e) => set('hotspotServer', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Status</label>
+            <select className="input" value={form.isActive ? 'true' : 'false'} onChange={(e) => set('isActive', e.target.value === 'true')}>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+        {isEdit && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <button className="btn btn-ghost" onClick={testConn} disabled={testing} style={{ fontSize: '0.8rem' }}>
+              {testing ? 'Testing…' : 'Test Connection'}
+            </button>
+            {testMsg && (
+              <span style={{ marginLeft: '0.75rem', fontSize: '0.82rem', color: testMsg === 'Connected!' ? 'var(--green)' : 'var(--red)' }}>
+                {testMsg}
+              </span>
+            )}
+          </div>
+        )}
+        {err && <p className="error-msg" style={{ marginTop: '0.75rem' }}>{err}</p>}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add Router'}
+          </button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const HEALTH_COLOR = { OK: '#10b981', DOWN: '#ef4444', UNKNOWN: '#6b7280' };
+
+function RoutersTab() {
+  const [routers, setRouters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api('/routers').then((r) => setRouters(r.data.data)).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await apiDel(`/routers/${deleteTarget._id}`);
+      setDeleteTarget(null);
+      load();
+    } catch { /* ignore */ } finally { setDeleting(false); }
+  };
+
+  if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}><div className="spinner" /></div>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button className="btn btn-primary" onClick={() => setModal('new')} style={{ fontSize: '0.82rem' }}>
+          + Add Router
+        </button>
+      </div>
+      {modal !== null && (
+        <RouterModal
+          router={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          onSuccess={() => { setModal(null); load(); }}
+        />
+      )}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 style={{ margin: '0 0 0.75rem' }}>Remove router?</h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
+              Remove <strong>{deleteTarget.name}</strong>? Active sessions using this router will be unaffected.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="btn" style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
+                onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Removing…' : 'Remove'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {routers.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)', fontSize: '0.88rem' }}>
+          No additional routers configured. Your main router is set in Settings.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Status</th><th>Name</th><th>Host</th><th>Server</th><th>Last Check</th><th></th></tr>
+            </thead>
+            <tbody>
+              {routers.map((r) => (
+                <tr key={r._id}>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 700, color: HEALTH_COLOR[r.healthStatus] }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: HEALTH_COLOR[r.healthStatus], display: 'inline-block' }} />
+                      {r.healthStatus}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>{r.name}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--text-2)' }}>{r.host}:{r.port}</td>
+                  <td style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>{r.hotspotServer}</td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                    {r.lastHealthCheck ? new Date(r.lastHealthCheck).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'Never'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                        onClick={() => setModal(r)}>Edit</button>
+                      <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', color: 'var(--red)', borderColor: 'var(--red)' }}
+                        onClick={() => setDeleteTarget(r)}>Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Staff (Sub-users) Tab ─────────────────────────────────────────────────────
+const ALL_PERMS = ['viewTransactions', 'viewSessions', 'viewAnalytics', 'grantSessions', 'extendSessions', 'terminateSessions', 'manageVouchers'];
+const PERM_LABEL = {
+  viewTransactions: 'View Transactions', viewSessions: 'View Sessions', viewAnalytics: 'View Analytics',
+  grantSessions: 'Grant Sessions', extendSessions: 'Extend Sessions', terminateSessions: 'Terminate Sessions',
+  manageVouchers: 'Manage Vouchers',
+};
+const EMPTY_SUBUSER = { name: '', email: '', password: '', permissions: { viewTransactions: true, viewSessions: true, viewAnalytics: false, grantSessions: false, extendSessions: false, terminateSessions: false, manageVouchers: false } };
+
+function SubUserModal({ user, onClose, onSuccess }) {
+  const isEdit = !!user?._id;
+  const [form, setForm] = useState(user ? { name: user.name, email: user.email, password: '', permissions: { ...user.permissions } } : EMPTY_SUBUSER);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const togglePerm = (p) => setForm((prev) => ({ ...prev, permissions: { ...prev.permissions, [p]: !prev.permissions[p] } }));
+
+  const submit = async () => {
+    if (!form.name || !form.email) { setErr('Name and email are required.'); return; }
+    if (!isEdit && !form.password) { setErr('Password is required.'); return; }
+    setSaving(true); setErr('');
+    try {
+      const payload = { name: form.name, email: form.email, permissions: form.permissions };
+      if (form.password) payload.password = form.password;
+      if (isEdit) await apiPut(`/sub-users/${user._id}`, payload);
+      else await apiPost('/sub-users', payload);
+      onSuccess();
+    } catch (e) {
+      setErr(e.response?.data?.message || 'Failed to save staff user.');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h3 style={{ margin: '0 0 1.25rem', fontSize: '1.05rem' }}>{isEdit ? 'Edit Staff User' : 'Add Staff User'}</h3>
+        <div className="form-group">
+          <label>Name *</label>
+          <input className="input" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Jane Doe" />
+        </div>
+        <div className="form-group">
+          <label>Email *</label>
+          <input className="input" type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="jane@example.com" />
+        </div>
+        <div className="form-group">
+          <label>Password {isEdit ? '(leave blank to keep)' : '*'}</label>
+          <input className="input" type="password" value={form.password} onChange={(e) => set('password', e.target.value)} autoComplete="new-password" />
+        </div>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: '0.5rem' }}>Permissions</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+            {ALL_PERMS.map((p) => (
+              <label key={p} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!form.permissions[p]} onChange={() => togglePerm(p)} />
+                {PERM_LABEL[p]}
+              </label>
+            ))}
+          </div>
+        </div>
+        {err && <p className="error-msg">{err}</p>}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+          <button className="btn btn-primary" onClick={submit} disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Add User'}
+          </button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaffTab() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api('/sub-users').then((r) => setUsers(r.data.data)).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await apiDel(`/sub-users/${deleteTarget._id}`);
+      setDeleteTarget(null);
+      load();
+    } catch { /* ignore */ } finally { setDeleting(false); }
+  };
+
+  if (loading) return <div style={{ padding: '2rem', textAlign: 'center' }}><div className="spinner" /></div>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+        <button className="btn btn-primary" onClick={() => setModal('new')} style={{ fontSize: '0.82rem' }}>
+          + Add Staff User
+        </button>
+      </div>
+      {modal !== null && (
+        <SubUserModal
+          user={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          onSuccess={() => { setModal(null); load(); }}
+        />
+      )}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 style={{ margin: '0 0 0.75rem' }}>Remove staff user?</h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
+              Remove <strong>{deleteTarget.name}</strong>? They will no longer be able to log in.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="btn" style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
+                onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Removing…' : 'Remove'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {users.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)', fontSize: '0.88rem' }}>
+          No staff users yet. Add one to let staff log in with limited permissions.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Permissions</th><th>Status</th><th>Last Login</th><th></th></tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u._id}>
+                  <td style={{ fontWeight: 600 }}>{u.name}</td>
+                  <td style={{ fontSize: '0.82rem', color: 'var(--text-2)' }}>{u.email}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                      {ALL_PERMS.filter((p) => u.permissions?.[p]).map((p) => (
+                        <span key={p} style={{ fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                          {PERM_LABEL[p]}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: u.isActive ? 'var(--green)' : 'var(--text-3)' }}>
+                      {u.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                    {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('en-KE') : 'Never'}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                        onClick={() => setModal(u)}>Edit</button>
+                      <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', color: 'var(--red)', borderColor: 'var(--red)' }}
+                        onClick={() => setDeleteTarget(u)}>Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 export default function OperatorDashboard() {
   const navigate = useNavigate();
@@ -810,6 +1260,9 @@ export default function OperatorDashboard() {
   const [extendMins, setExtendMins] = useState('');
   const [extending, setExtending] = useState(false);
   const [extendErr, setExtendErr] = useState('');
+  const [failures, setFailures] = useState([]);
+  const [kickTarget, setKickTarget] = useState(null);
+  const [kickSaving, setKickSaving] = useState(false);
   const timerRef = useRef(null);
   const operatorLabel = profile?.brandName || profile?.name || getOperatorBrandName() || getOperatorName();
 
@@ -821,13 +1274,15 @@ export default function OperatorDashboard() {
       api('/bundles'),
       api('/profile'),
       api('/settlements'),
-    ]).then(([s, sess, t, b, p, settle]) => {
+      api('/provision-failures'),
+    ]).then(([s, sess, t, b, p, settle, f]) => {
       setStats(s.data.data);
       setSessions(sess.data.data);
       setTxns(t.data.data);
       setBundles(b.data.data);
       setProfile(p.data.data);
       setSettlements(settle.data.data);
+      setFailures(f.data.data);
       setSecondsAgo(0);
     });
 
@@ -865,6 +1320,15 @@ export default function OperatorDashboard() {
     }
   };
 
+  const handleKick = async () => {
+    setKickSaving(true);
+    try {
+      await apiDel(`/sessions/${kickTarget._id}`);
+      setKickTarget(null);
+      fetchAll().catch(() => {});
+    } catch { /* ignore */ } finally { setKickSaving(false); }
+  };
+
   const handleDeleteBundle = async (b) => {
     setDeleteErr('');
     try {
@@ -879,7 +1343,7 @@ export default function OperatorDashboard() {
   if (loading) return <div className="login-wrap"><div className="spinner" /></div>;
   if (error) return <div className="login-wrap"><p className="error-msg">{error}</p></div>;
 
-  const tabs = ['sessions', 'transactions', 'settlements', 'bundles', 'analytics', 'settings', 'account'];
+  const tabs = ['sessions', 'transactions', 'settlements', 'bundles', 'failures', 'routers', 'staff', 'analytics', 'settings', 'account'];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -944,6 +1408,24 @@ export default function OperatorDashboard() {
                 Delete
               </button>
               <button className="btn btn-ghost" onClick={() => { setDeleteConfirm(null); setDeleteErr(''); }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {kickTarget && (
+        <div className="modal-overlay" onClick={() => setKickTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360 }}>
+            <h3 style={{ margin: '0 0 0.75rem' }}>Force-terminate session?</h3>
+            <p style={{ color: 'var(--text-3)', fontSize: '0.88rem', marginBottom: '1rem' }}>
+              This will immediately kick <strong>{kickTarget.phone || kickTarget.username}</strong> from the hotspot and end their session.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="btn" style={{ background: 'var(--red)', color: '#fff', border: 'none' }}
+                onClick={handleKick} disabled={kickSaving}>
+                {kickSaving ? 'Terminating…' : 'Terminate'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => setKickTarget(null)}>Cancel</button>
             </div>
           </div>
         </div>
@@ -1054,7 +1536,7 @@ export default function OperatorDashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th><th></th></tr>
+                  <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th><th></th><th></th></tr>
                 </thead>
                 <tbody>
                   {sessions.length === 0 && (
@@ -1080,6 +1562,15 @@ export default function OperatorDashboard() {
                             onClick={() => { setExtendTarget(s); setExtendMins(''); setExtendErr(''); }}
                           >
                             Extend
+                          </button>
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', color: 'var(--red)', borderColor: 'var(--red)', whiteSpace: 'nowrap' }}
+                            onClick={() => setKickTarget(s)}
+                          >
+                            Kick
                           </button>
                         </td>
                       </tr>
@@ -1203,6 +1694,17 @@ export default function OperatorDashboard() {
           </div>
         </>
       )}
+
+      {/* Provision Failures */}
+      {tab === 'failures' && (
+        <FailuresTab failures={failures} onRetry={() => fetchAll().catch(() => {})} />
+      )}
+
+      {/* Routers */}
+      {tab === 'routers' && <RoutersTab />}
+
+      {/* Staff */}
+      {tab === 'staff' && <StaffTab />}
 
       {/* Analytics */}
       {tab === 'analytics' && <AnalyticsTab />}

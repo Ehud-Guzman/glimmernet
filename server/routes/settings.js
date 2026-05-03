@@ -8,7 +8,7 @@ const { audit } = require('../utils/audit');
 // Keys whose values must not appear in audit logs
 const SENSITIVE_SETTING_KEYS = new Set([
   'daraja_consumer_key', 'daraja_consumer_secret', 'daraja_passkey',
-  'daraja_b2c_security_credential', 'at_api_key', 'mikrotik_pass',
+  'daraja_b2c_security_credential', 'at_api_key', 'mikrotik_pass', 'smtp_pass',
 ]);
 
 const DARAJA_KEYS = new Set([
@@ -227,6 +227,74 @@ const DEFAULTS = [
     label: 'Admin Notification Phone',
     description: 'Phone number (e.g. 0712345678) that receives an SMS when a new operator signs up. Requires SMS to be enabled.',
     group: 'notifications',
+  },
+
+  // ── WhatsApp (Africa's Talking) ───────────────────────────────────────────────
+  {
+    key: 'whatsapp_enabled',
+    value: false,
+    type: 'boolean',
+    label: 'WhatsApp Notifications Enabled',
+    description: "Send session alerts via Africa's Talking WhatsApp API in addition to SMS.",
+    group: 'notifications',
+  },
+
+  // ── SMTP / Email ──────────────────────────────────────────────────────────────
+  {
+    key: 'smtp_enabled',
+    value: false,
+    type: 'boolean',
+    label: 'SMTP Email Enabled',
+    description: 'Enable outbound email for operator reports. Requires host, user, and password below.',
+    group: 'email',
+  },
+  {
+    key: 'smtp_host',
+    value: '',
+    type: 'string',
+    label: 'SMTP Host',
+    description: 'Mail server hostname (e.g. smtp.gmail.com, smtp.mailtrap.io).',
+    group: 'email',
+  },
+  {
+    key: 'smtp_port',
+    value: 587,
+    type: 'number',
+    label: 'SMTP Port',
+    description: '587 (STARTTLS, recommended) or 465 (SSL/TLS). Port 25 is usually blocked by cloud providers.',
+    group: 'email',
+  },
+  {
+    key: 'smtp_secure',
+    value: false,
+    type: 'boolean',
+    label: 'Use SSL/TLS (port 465)',
+    description: 'Enable only when using port 465. Leave disabled for port 587 (STARTTLS).',
+    group: 'email',
+  },
+  {
+    key: 'smtp_user',
+    value: '',
+    type: 'string',
+    label: 'SMTP Username',
+    description: 'Login username for the mail server (usually your email address).',
+    group: 'email',
+  },
+  {
+    key: 'smtp_pass',
+    value: '',
+    type: 'string',
+    label: 'SMTP Password / App Password',
+    description: 'Mail server password. For Gmail, generate an App Password — do not use your account password.',
+    group: 'email',
+  },
+  {
+    key: 'smtp_from',
+    value: '',
+    type: 'string',
+    label: 'From Address',
+    description: 'Sender address shown on outgoing reports (e.g. reports@yourdomain.com).',
+    group: 'email',
   },
 ];
 

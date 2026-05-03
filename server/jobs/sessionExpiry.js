@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const Session = require('../models/Session');
 const Voucher = require('../models/Voucher');
-const { removeHotspotUser } = require('../services/mikrotikService');
+const { removeHotspotUser, getUsageStats } = require('../services/mikrotikService');
 const logger = require('../utils/logger');
 
 const startSessionExpiryJob = () => {
@@ -31,6 +31,12 @@ const startSessionExpiryJob = () => {
     for (const session of expiredSessions) {
       session.status = 'EXPIRED';
       try {
+        // Capture bandwidth stats before removing the user
+        const usage = await getUsageStats(session.operatorId, session.username).catch(() => null);
+        if (usage) {
+          session.bytesIn  = usage.bytesIn;
+          session.bytesOut = usage.bytesOut;
+        }
         await removeHotspotUser(session.operatorId, session.username);
         session.mikrotikRemoved = true;
         logger.info('Session expired and cleaned up', { username: session.username });

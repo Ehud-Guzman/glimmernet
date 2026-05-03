@@ -214,4 +214,93 @@ router.get('/devices', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/admin/analytics/churn  — retention and churn metrics
+router.get('/churn', async (req, res, next) => {
+  try {
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const [uniquePhones, returningPhones, totalTxns] = await Promise.all([
+      Transaction.distinct('phone', { status: 'SUCCESS', createdAt: { $gte: since } }),
+      Transaction.aggregate([
+        { $match: { status: 'SUCCESS', createdAt: { $gte: since } } },
+        { $group: { _id: '$phone', count: { $sum: 1 } } },
+        { $match: { count: { $gt: 1 } } },
+        { $count: 'total' },
+      ]),
+      Transaction.countDocuments({ status: 'SUCCESS', createdAt: { $gte: since } }),
+    ]);
+
+    const uniqueCount  = uniquePhones.length;
+    const returningCount = returningPhones[0]?.total || 0;
+    const newCount     = uniqueCount - returningCount;
+    const retentionRate = uniqueCount > 0 ? Math.round((returningCount / uniqueCount) * 100) : 0;
+
+    // Average sessions per paying customer
+    const avgSessions = uniqueCount > 0 ? Math.round((totalTxns / uniqueCount) * 100) / 100 : 0;
+
+    res.json({ success: true, data: { days, uniqueCustomers: uniqueCount, returningCustomers: returningCount, newCustomers: newCount, retentionRate, totalTransactions: totalTxns, avgSessionsPerCustomer: avgSessions } });
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/admin/analytics/bandwidth  — total GB served per operator (from captured session bytes)
+router.get('/bandwidth', async (req, res, next) => {
+  try {
+    const days = Math.min(Number(req.query.days) || 30, 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const Session = require('../models/Session');
+
+    const rows = await Session.aggregate([
+      { $match: { createdAt: { $gte: since }, $or: [{ bytesIn: { $gt: 0 } }, { bytesOut: { $gt: 0 } }] } },
+      {
+        $group: {
+          _id: '$operatorId',
+          totalBytesIn:  { $sum: '$bytesIn' },
+          totalBytesOut: { $sum: '$bytesOut' },
+          sessionCount:  { $sum: 1 },
+        },
+      },
+      { $lookup: { from: 'operators', localField: '_id', foreignField: '_id', as: 'op' } },
+      { $unwind: { path: '$op', preserveNullAndEmptyArrays: true } },
+      { $sort: { totalBytesOut: -1 } },
+    ]);
+
+    const toGB = (b) => Math.round((b / (1024 ** 3)) * 100) / 100;
+
+    const data = rows.map((r) => ({
+      operatorId: r._id,
+      name: r.op?.name || 'Unknown',
+      shortCode: r.op?.shortCode || '',
+      gbIn:  toGB(r.totalBytesIn),
+      gbOut: toGB(r.totalBytesOut),
+      gbTotal: toGB(r.totalBytesIn + r.totalBytesOut),
+      sessions: r.sessionCount,
+    }));
+
+    res.json({ success: true, data, days });
+  } catch (err) { next(err); }
+});
+
+// GET /api/v1/admin/analytics/reconciliation  — stuck settlements and reconciliation history
+router.get('/reconciliation', async (req, res, next) => {
+  try {
+    const Settlement = require('../models/Settlement');
+    const cutoff = new Date(Date.now() - 30 * 60 * 1000); // 30 min
+
+    const [stuck, recentFailed, recentPaid] = await Promise.all([
+      Settlement.find({ status: 'PROCESSING', createdAt: { $lt: cutoff } })
+        .populate('operatorId', 'name shortCode ownerPhone')
+        .sort({ createdAt: 1 })
+        .limit(50),
+      Settlement.find({ status: 'FAILED', updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } })
+        .populate('operatorId', 'name shortCode')
+        .sort({ updatedAt: -1 })
+        .limit(20),
+      Settlement.countDocuments({ status: 'PAID', updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
+    ]);
+
+    res.json({ success: true, data: { stuckSettlements: stuck, recentFailures: recentFailed, paidLast24h: recentPaid } });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

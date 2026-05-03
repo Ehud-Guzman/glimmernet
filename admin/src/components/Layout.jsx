@@ -18,6 +18,8 @@ const Icon = ({ d, size = 16 }) => (
 );
 
 const ICONS = {
+  disputes:     ['M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z', 'M12 9v4', 'M12 17h.01'],
+  health:       ['M22 12h-4l-3 9L9 3l-3 9H2'],
   dashboard:    'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10',
   sessions:     ['M1.42 9a16 16 0 0 1 21.16 0', 'M5 12.55a11 11 0 0 1 14.08 0', 'M8.53 16.11a6 6 0 0 1 6.95 0', 'M12 20h.01'],
   transactions: ['M21 4H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z', 'M1 10h22'],
@@ -51,6 +53,8 @@ const ROUTE_MAP = {
   '/users':       'users',
   '/audit-logs':  'auditLogs',
   '/settings':    'settings',
+  '/disputes':    'disputes',
+  '/health':      'health',
 };
 
 const PAGE_INFO = {
@@ -162,6 +166,26 @@ const PAGE_INFO = {
       'M-Pesa / Daraja API keys, short code, and passkey for STK push',
       'MikroTik router IP, port, and credentials for session provisioning',
       'Platform fee percentage and allowed CORS origins for the portal',
+    ],
+  },
+  disputes: {
+    title: 'Disputes',
+    icon:  'disputes',
+    desc:  'Review and resolve customer-reported payment and session issues.',
+    points: [
+      'Customers file disputes when they pay but don\'t get internet',
+      'Update status to Investigating → Resolved or Rejected with a note',
+      'Track refund amounts issued against each resolved dispute',
+    ],
+  },
+  health: {
+    title: 'Network Health',
+    icon:  'health',
+    desc:  'Real-time health status for all operator routers on the platform.',
+    points: [
+      'See which MikroTik routers are online or offline right now',
+      'Health is checked every 5 minutes by the background monitor',
+      'Offline routers are flagged — new sessions will fail for those operators',
     ],
   },
 };
@@ -432,12 +456,14 @@ export default function Layout({ children }) {
         {superAdmin && (
           <nav className="sidebar-nav">
             <div className="sidebar-section-label">Platform</div>
-            <NavItem to="/analytics"   icon="analytics"   label="Analytics"   onClick={closeSidebar} />
-            <NavItem to="/operators"   icon="operators"   label="Operators"   onClick={closeSidebar} />
-            <NavItem to="/settlements" icon="settlements" label="Settlements"  onClick={closeSidebar} badge={pendingCount || undefined} />
-            <NavItem to="/users"       icon="users"       label="Admin Users" onClick={closeSidebar} />
-            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"  onClick={closeSidebar} />
-            <NavItem to="/settings"    icon="settings"    label="Settings"    onClick={closeSidebar} />
+            <NavItem to="/analytics"   icon="analytics"   label="Analytics"     onClick={closeSidebar} />
+            <NavItem to="/operators"   icon="operators"   label="Operators"     onClick={closeSidebar} />
+            <NavItem to="/settlements" icon="settlements" label="Settlements"   onClick={closeSidebar} badge={pendingCount || undefined} />
+            <NavItem to="/disputes"    icon="disputes"    label="Disputes"      onClick={closeSidebar} />
+            <NavItem to="/health"      icon="health"      label="Network Health" onClick={closeSidebar} />
+            <NavItem to="/users"       icon="users"       label="Admin Users"   onClick={closeSidebar} />
+            <NavItem to="/audit-logs"  icon="auditLogs"   label="Audit Logs"   onClick={closeSidebar} />
+            <NavItem to="/settings"    icon="settings"    label="Settings"      onClick={closeSidebar} />
           </nav>
         )}
 

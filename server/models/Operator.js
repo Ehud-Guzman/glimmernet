@@ -59,6 +59,15 @@ const OperatorSchema = new mongoose.Schema({
   lastHealthCheck: { type: Date, default: null },
   healthStatus: { type: String, enum: ['OK', 'DOWN', 'UNKNOWN'], default: 'UNKNOWN' },
   healthError: { type: String, default: '' },
+  // Scheduled email reports
+  reportEmailEnabled: { type: Boolean, default: false },
+  reportFrequency: { type: String, enum: ['daily', 'weekly'], default: 'weekly' },
+  reportLastSentAt: { type: Date, default: null },
+  // Referral / reseller
+  referralCode: { type: String, default: '', uppercase: true, trim: true },
+  referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Operator', default: null },
+  referralCommissionPercent: { type: Number, default: 0, min: 0, max: 50 },
+  lifetimeReferralEarnings: { type: Number, default: 0 },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Operator', OperatorSchema);

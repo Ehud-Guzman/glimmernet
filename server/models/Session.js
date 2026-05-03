@@ -20,6 +20,12 @@ const SessionSchema = new mongoose.Schema({
   voucherId: { type: mongoose.Schema.Types.ObjectId, ref: 'Voucher', default: null },
   isTrial: { type: Boolean, default: false },
   reminderSent: { type: Boolean, default: false },
+  usageAlertSent: { type: Boolean, default: false },  // true after 80% data alert sent
+  // Bandwidth captured at session end (bytes from MikroTik active session)
+  bytesIn: { type: Number, default: 0 },
+  bytesOut: { type: Number, default: 0 },
+  // Which sub-router served this session (null = operator default)
+  routerId: { type: mongoose.Schema.Types.ObjectId, ref: 'OperatorRouter', default: null },
 }, { timestamps: true });
 
 // Compound indexes for hot query paths
