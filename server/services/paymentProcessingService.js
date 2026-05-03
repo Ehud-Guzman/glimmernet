@@ -103,7 +103,17 @@ const finalizeSuccessfulPayment = async ({
   }
 
   if (transaction.status === 'PROCESSING') {
-    return enrichSessionFromTransaction(transaction);
+    const enriched = await enrichSessionFromTransaction(transaction);
+    // If no session exists and the transaction is still PROCESSING, the server
+    // crashed between claiming it and finishing provisioning. Reset to ACCESS_FAILED
+    // so the provision retry job can pick it up rather than leaving it stuck.
+    if (!enriched.session && enriched.transaction?.status === 'PROCESSING') {
+      await Transaction.findByIdAndUpdate(transactionId, {
+        status: 'ACCESS_FAILED',
+        processingError: 'Session provisioning was interrupted (server restart). Will retry automatically.',
+      });
+    }
+    return enriched;
   }
 
   const claimed = await Transaction.findOneAndUpdate(

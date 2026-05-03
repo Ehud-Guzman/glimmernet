@@ -108,6 +108,32 @@ router.post('/sessions/grant', validate(schemas.sessionGrant), async (req, res, 
   }
 });
 
+// PATCH /api/v1/operator/sessions/:id/extend
+router.patch('/sessions/:id/extend', async (req, res, next) => {
+  try {
+    const minutes = Number(req.body.minutes);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+      return res.status(400).json({ success: false, message: 'minutes must be a whole number between 1 and 10080' });
+    }
+    const session = await Session.findOne({ _id: req.params.id, operatorId: req.operator._id });
+    if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+    if (session.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Only active sessions can be extended' });
+    }
+    const base = session.expiresAt && session.expiresAt > new Date() ? session.expiresAt : new Date();
+    session.expiresAt = new Date(base.getTime() + minutes * 60 * 1000);
+    await session.save();
+    await audit({
+      actor: req.operator._id, actorModel: 'Operator', actorName: req.operator.name,
+      action: 'SESSION_EXTENDED', targetModel: 'Session', targetId: session._id,
+      meta: { username: session.username, minutes, newExpiry: session.expiresAt },
+    });
+    res.json({ success: true, data: session });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/v1/operator/transactions
 router.get('/transactions', async (req, res, next) => {
   try {

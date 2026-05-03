@@ -68,6 +68,7 @@ export default function Vouchers() {
   const [page, setPage] = useState(1);
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterCode, setFilterCode] = useState('');
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -82,6 +83,7 @@ export default function Vouchers() {
     const params = new URLSearchParams({ page, limit: LIMIT });
     if (filterType) params.set('type', filterType);
     if (filterStatus) params.set('status', filterStatus);
+    if (filterCode.trim()) params.set('code', filterCode.trim());
     client.get(`/admin/vouchers?${params}`)
       .then((r) => { setVouchers(r.data.data); setTotal(r.data.total); })
       .finally(() => setLoading(false));
@@ -92,7 +94,7 @@ export default function Vouchers() {
   };
 
   useEffect(() => { fetchBundles(); }, []);
-  useEffect(() => { fetchVouchers(); }, [page, filterType, filterStatus]);
+  useEffect(() => { fetchVouchers(); }, [page, filterType, filterStatus, filterCode]);
 
   const handleRevoke = async (id) => {
     if (!confirm('Revoke this voucher? This cannot be undone.')) return;
@@ -159,6 +161,13 @@ export default function Vouchers() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Search by code…"
+          value={filterCode}
+          onChange={(e) => { setFilterCode(e.target.value); setPage(1); }}
+          style={{ padding: '0.4rem 0.75rem', background: '#1a1a1a', color: '#fff', border: '1px solid #333', borderRadius: '6px', minWidth: 160 }}
+        />
         <select
           value={filterType}
           onChange={(e) => { setFilterType(e.target.value); setPage(1); }}

@@ -17,6 +17,7 @@ const validate = require('../middleware/validate');
 const schemas = require('../middleware/schemas');
 const { audit } = require('../utils/audit');
 const { encrypt: encryptField } = require('../utils/fieldEncryption');
+const logger = require('../utils/logger');
 const configService = require('../services/configService');
 
 const router = express.Router();
@@ -189,6 +190,31 @@ router.delete('/sessions/:id', async (req, res, next) => {
       meta: { username: session.username, macAddress: session.macAddress },
     });
     res.json({ success: true, message: 'Session terminated' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/sessions/:id/extend', async (req, res, next) => {
+  try {
+    const minutes = Number(req.body.minutes);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+      return res.status(400).json({ success: false, message: 'minutes must be a whole number between 1 and 10080' });
+    }
+    const session = await Session.findById(req.params.id);
+    if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
+    if (session.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: 'Only active sessions can be extended' });
+    }
+    const base = session.expiresAt && session.expiresAt > new Date() ? session.expiresAt : new Date();
+    session.expiresAt = new Date(base.getTime() + minutes * 60 * 1000);
+    await session.save();
+    await audit({
+      actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,
+      action: 'SESSION_EXTENDED', targetModel: 'Session', targetId: session._id,
+      meta: { username: session.username, minutes, newExpiry: session.expiresAt },
+    });
+    res.json({ success: true, data: session });
   } catch (err) {
     next(err);
   }
@@ -369,10 +395,14 @@ router.delete('/bundles/:id', isSuperAdmin, async (req, res, next) => {
 
 router.get('/vouchers', async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, type, status } = req.query;
+    const { page = 1, limit = 20, type, status, code } = req.query;
     const filter = {};
     if (type)   filter.type   = type;
     if (status) filter.status = status;
+    if (code) {
+      const escaped = code.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.code = { $regex: escaped, $options: 'i' };
+    }
     const [vouchers, total] = await Promise.all([
       Voucher.find(filter)
         .populate('bundleId', 'name price durationMinutes dataMB')
@@ -396,14 +426,20 @@ router.post('/vouchers/generate', isSuperAdmin, validate(schemas.voucherGenerate
 
     const batchId = `batch_${Date.now()}`;
     const codes = await generateUniqueCodes(quantity);
-    await Voucher.insertMany(codes.map((code) => ({
-      code, type, bundleId,
-      operatorId: bundle.operatorId || null,
-      maxDevices,
-      expiresAt,
-      createdBy: req.admin.id,
-      batchId, note,
-    })));
+    try {
+      await Voucher.insertMany(codes.map((code) => ({
+        code, type, bundleId,
+        operatorId: bundle.operatorId || null,
+        maxDevices,
+        expiresAt,
+        createdBy: req.admin.id,
+        batchId, note,
+      })), { ordered: false });
+    } catch (err) {
+      const isDupOnly = err.code === 11000 || err.writeErrors?.every((e) => e.code === 11000);
+      if (!isDupOnly) throw err;
+      logger.warn('Voucher batch: duplicate codes skipped', { batchId, count: err.writeErrors?.length ?? 1 });
+    }
 
     await audit({
       actor: req.admin.id, actorModel: 'AdminUser', actorName: req.admin.name,

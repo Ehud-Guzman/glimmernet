@@ -58,6 +58,26 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
     return () => clearInterval(interval);
   }, [checkoutRequestId, hotspotLoginUrl]);
 
+  const handleCheckStatus = async () => {
+    setVerifying(true);
+    setVerifyError('');
+    try {
+      const res = await axios.get(`/api/v1/session/status/${checkoutRequestId}`);
+      const { status, username, password, expiresAt } = res.data;
+      if (status === 'SUCCESS' && username) {
+        setSession({ username, password, expiresAt });
+        setPhase('success');
+        autoLogin(username, password, hotspotLoginUrl);
+      } else {
+        setVerifyError('Internet not active yet. Use "Retry Activation" if you were charged.');
+      }
+    } catch {
+      setVerifyError('Could not check status. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleVerify = async () => {
     setVerifying(true);
     setVerifyError('');
@@ -164,6 +184,15 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
         {verifying ? t.retryingActivation : t.retryActivation}
       </button>
 
+      <button
+        className="retry-btn"
+        onClick={handleCheckStatus}
+        disabled={verifying}
+        style={{ marginBottom: '0.75rem' }}
+      >
+        {verifying ? 'Checking…' : 'Check my connection'}
+      </button>
+
       {supportParts.length > 0 && (
         <p className="support-copy">
           {t.ifStuck} <strong style={{ color: '#ddd' }}>{supportParts.join(' · ')}</strong>
@@ -190,6 +219,15 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
         style={{ marginBottom: '0.75rem' }}
       >
         {verifying ? t.checkingMpesa : t.verifyPayment}
+      </button>
+
+      <button
+        className="retry-btn"
+        onClick={handleCheckStatus}
+        disabled={verifying}
+        style={{ marginBottom: '0.75rem' }}
+      >
+        {verifying ? 'Checking…' : 'Check my connection'}
       </button>
 
       <button className="retry-btn" onClick={() => window.location.reload()}>

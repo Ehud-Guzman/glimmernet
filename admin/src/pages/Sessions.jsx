@@ -178,6 +178,10 @@ export default function Sessions() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [terminating, setTerminating] = useState(null);
+  const [extendTarget, setExtendTarget] = useState(null);
+  const [extendMins, setExtendMins] = useState('');
+  const [extending, setExtending] = useState(false);
+  const [extendErr, setExtendErr] = useState('');
   const [grantOpen, setGrantOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -208,6 +212,22 @@ export default function Sessions() {
     }
   };
 
+  const submitExtend = async () => {
+    const mins = Number(extendMins);
+    if (!mins || mins < 1) { setExtendErr('Enter a positive number of minutes.'); return; }
+    setExtending(true); setExtendErr('');
+    try {
+      await client.patch(`/admin/sessions/${extendTarget._id}/extend`, { minutes: mins });
+      toast.success(`Session extended by ${mins} minute${mins !== 1 ? 's' : ''}.`);
+      setExtendTarget(null); setExtendMins('');
+      fetchSessions();
+    } catch (e) {
+      setExtendErr(e.response?.data?.message || 'Could not extend session.');
+    } finally {
+      setExtending(false);
+    }
+  };
+
   const exportCsv = async () => {
     setExporting(true);
     try {
@@ -230,6 +250,37 @@ export default function Sessions() {
 
   return (
     <>
+      {extendTarget && (
+        <div className="modal-overlay" onClick={() => { setExtendTarget(null); setExtendMins(''); setExtendErr(''); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 340 }}>
+            <h3>Extend Session</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-3)', marginBottom: '1rem' }}>
+              Add time for <strong>{extendTarget.phone || extendTarget.username}</strong>
+            </p>
+            <div className="form-group">
+              <label>Add minutes</label>
+              <input
+                className="input"
+                type="number"
+                min="1"
+                max="10080"
+                placeholder="e.g. 60"
+                value={extendMins}
+                onChange={(e) => { setExtendMins(e.target.value); setExtendErr(''); }}
+                autoFocus
+              />
+            </div>
+            {extendErr && <p className="error-msg">{extendErr}</p>}
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button className="btn btn-primary" onClick={submitExtend} disabled={extending}>
+                {extending ? 'Extending…' : 'Extend'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => { setExtendTarget(null); setExtendMins(''); setExtendErr(''); }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {grantOpen && (
         <GrantModal
           onClose={() => setGrantOpen(false)}
@@ -278,14 +329,23 @@ export default function Sessions() {
                   <td><span className={`badge badge-${s.status.toLowerCase()}`}>{s.status}</span></td>
                   <td>
                     {s.status === 'ACTIVE' && (
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
-                        onClick={() => terminate(s._id)}
-                        disabled={terminating === s._id}
-                      >
-                        Terminate
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                          onClick={() => { setExtendTarget(s); setExtendMins(''); setExtendErr(''); }}
+                        >
+                          Extend
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
+                          onClick={() => terminate(s._id)}
+                          disabled={terminating === s._id}
+                        >
+                          Terminate
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

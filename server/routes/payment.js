@@ -91,7 +91,7 @@ router.post('/initiate', validate(schemas.paymentInitiate), async (req, res, nex
         macAddress: macUpper,
         bundleId: bundle._id,
         status: 'PENDING',
-        createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) },
+        createdAt: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
       });
       if (dup?.checkoutRequestId) {
         return res.json({
@@ -144,28 +144,43 @@ router.post('/callback', darajaIpGuard, async (req, res, next) => {
 
   try {
     const body = req.body?.Body?.stkCallback;
-    if (!body) return;
+    if (!body) {
+      logger.warn('Daraja callback received with no stkCallback body', { raw: JSON.stringify(req.body || {}).slice(0, 300) });
+      return;
+    }
 
     const { CheckoutRequestID, ResultCode, CallbackMetadata } = body;
 
     const transaction = await Transaction.findOne({ checkoutRequestId: CheckoutRequestID });
-    if (!transaction) return;
-    if (transaction.status === 'SUCCESS') return;
-
-    if (Number(ResultCode) !== 0) {
-      transaction.status = Number(ResultCode) === 1032 ? 'CANCELLED' : 'FAILED';
-      transaction.callbackPayload = body;
-      await transaction.save();
+    if (!transaction) {
+      logger.warn('Daraja callback for unknown CheckoutRequestID — possible replay or duplicate delivery', { CheckoutRequestID });
       return;
     }
+    if (transaction.status === 'SUCCESS') return;
 
     const meta = CallbackMetadata?.Item || [];
     const get = (name) => meta.find((i) => i.Name === name)?.Value;
 
+    // Store only the fields we need — avoids ballooning document size if Safaricom adds fields.
+    const prunedPayload = {
+      CheckoutRequestID,
+      MerchantRequestID: body.MerchantRequestID,
+      ResultCode,
+      ResultDesc: body.ResultDesc,
+      Items: meta.map((i) => ({ Name: i.Name, Value: i.Value })),
+    };
+
+    if (Number(ResultCode) !== 0) {
+      transaction.status = Number(ResultCode) === 1032 ? 'CANCELLED' : 'FAILED';
+      transaction.callbackPayload = prunedPayload;
+      await transaction.save();
+      return;
+    }
+
     const { transaction: processedTxn, session } = await finalizeSuccessfulPayment({
       transactionId: transaction._id,
       mpesaReceiptNumber: get('MpesaReceiptNumber') || '',
-      callbackPayload: body,
+      callbackPayload: prunedPayload,
     });
 
     logger.info('Payment callback processed', {

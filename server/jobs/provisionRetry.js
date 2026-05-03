@@ -51,7 +51,10 @@ const startProvisionRetryJob = () => {
     try {
       transactions = await Transaction.find({
         status: 'ACCESS_FAILED',
-        mpesaReceiptNumber: { $exists: true, $ne: '' },
+        $or: [
+          { mpesaReceiptNumber: { $exists: true, $ne: '' } },
+          { callbackPayload: { $exists: true, $ne: null } },
+        ],
         retryCount: { $lt: MAX_RETRIES },
       }).limit(20);
     } catch (err) {

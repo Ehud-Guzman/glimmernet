@@ -9,6 +9,7 @@ const authHeader = () => ({ headers: { Authorization: `Bearer ${getOperatorToken
 const api = (path, opts) => axios.get(`/api/v1/operator${path}`, { ...authHeader(), ...opts });
 const apiPost = (path, data) => axios.post(`/api/v1/operator${path}`, data, authHeader());
 const apiPut = (path, data) => axios.put(`/api/v1/operator${path}`, data, authHeader());
+const apiPatch = (path, data) => axios.patch(`/api/v1/operator${path}`, data, authHeader());
 const apiDel = (path) => axios.delete(`/api/v1/operator${path}`, authHeader());
 
 const fmt = (n) => `KES ${Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}`;
@@ -805,6 +806,10 @@ export default function OperatorDashboard() {
   const [bundleModal, setBundleModal] = useState(null); // null | 'new' | bundle object
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteErr, setDeleteErr] = useState('');
+  const [extendTarget, setExtendTarget] = useState(null);
+  const [extendMins, setExtendMins] = useState('');
+  const [extending, setExtending] = useState(false);
+  const [extendErr, setExtendErr] = useState('');
   const timerRef = useRef(null);
   const operatorLabel = profile?.brandName || profile?.name || getOperatorBrandName() || getOperatorName();
 
@@ -845,6 +850,21 @@ export default function OperatorDashboard() {
 
   const logout = () => { clearOperatorAuth(); navigate('/operator/login'); };
 
+  const handleExtend = async () => {
+    const mins = Number(extendMins);
+    if (!mins || mins < 1) { setExtendErr('Enter a positive number of minutes.'); return; }
+    setExtending(true); setExtendErr('');
+    try {
+      await apiPatch(`/sessions/${extendTarget._id}/extend`, { minutes: mins });
+      setExtendTarget(null); setExtendMins('');
+      fetchAll().catch(() => {});
+    } catch (e) {
+      setExtendErr(e.response?.data?.message || 'Could not extend session.');
+    } finally {
+      setExtending(false);
+    }
+  };
+
   const handleDeleteBundle = async (b) => {
     setDeleteErr('');
     try {
@@ -879,6 +899,37 @@ export default function OperatorDashboard() {
           onSuccess={() => { setBundleModal(null); fetchAll().catch(() => {}); }}
         />
       )}
+      {extendTarget && (
+        <div className="modal-overlay" onClick={() => { setExtendTarget(null); setExtendMins(''); setExtendErr(''); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 340 }}>
+            <h3 style={{ margin: '0 0 0.75rem' }}>Extend Session</h3>
+            <p style={{ color: 'var(--text-3)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+              Add time for <strong>{extendTarget.phone || extendTarget.username}</strong>
+            </p>
+            <div className="form-group">
+              <label>Add minutes</label>
+              <input
+                className="input"
+                type="number"
+                min="1"
+                max="10080"
+                placeholder="e.g. 60"
+                value={extendMins}
+                onChange={(e) => { setExtendMins(e.target.value); setExtendErr(''); }}
+                autoFocus
+              />
+            </div>
+            {extendErr && <p className="error-msg">{extendErr}</p>}
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
+              <button className="btn btn-primary" onClick={handleExtend} disabled={extending}>
+                {extending ? 'Extending…' : 'Extend'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => { setExtendTarget(null); setExtendMins(''); setExtendErr(''); }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteConfirm && (
         <div className="modal-overlay" onClick={() => { setDeleteConfirm(null); setDeleteErr(''); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
@@ -1003,11 +1054,11 @@ export default function OperatorDashboard() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th></tr>
+                  <tr><th>Phone</th><th>Bundle</th><th>Expires</th><th>Started</th><th></th></tr>
                 </thead>
                 <tbody>
                   {sessions.length === 0 && (
-                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)' }}>No active sessions.</td></tr>
+                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)' }}>No active sessions.</td></tr>
                   )}
                   {sessions.map((s) => {
                     const soonExpiry = s.expiresAt && new Date(s.expiresAt).getTime() - now <= 60 * 60 * 1000 && new Date(s.expiresAt).getTime() > now;
@@ -1021,6 +1072,15 @@ export default function OperatorDashboard() {
                         </td>
                         <td style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
                           {new Date(s.createdAt).toLocaleString('en-KE', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', whiteSpace: 'nowrap' }}
+                            onClick={() => { setExtendTarget(s); setExtendMins(''); setExtendErr(''); }}
+                          >
+                            Extend
+                          </button>
                         </td>
                       </tr>
                     );
