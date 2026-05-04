@@ -615,6 +615,9 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
 
     const target = Object.keys(override).length ? { ...op.toObject(), ...override } : op;
     const result = await testConnection(target);
+    await Operator.findByIdAndUpdate(op._id, {
+      $set: { healthStatus: 'OK', healthError: '', lastHealthCheck: new Date() },
+    });
     res.json({ success: true, message: 'Connection successful', data: result });
   } catch (err) {
     // Map low-level errors to friendly messages
@@ -624,6 +627,11 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
     else if (/ETIMEDOUT|ECONNRESET|timed out/i.test(raw)) friendly = 'Router unreachable — check the IP address and that this server can reach the router. If the router is on a local network, the cloud backend cannot reach it directly.';
     else if (/login|cannot log in|bad credentials|invalid user/i.test(raw)) friendly = 'Login failed — check the API username and password.';
     else if (/ENOTFOUND|getaddrinfo/.test(raw)) friendly = 'Hostname not found — use an IP address, not a domain name.';
+    if (req.params.id) {
+      await Operator.findByIdAndUpdate(req.params.id, {
+        $set: { healthStatus: 'DOWN', healthError: friendly.slice(0, 200), lastHealthCheck: new Date() },
+      }).catch(() => {});
+    }
     res.status(400).json({ success: false, message: friendly });
   }
 });

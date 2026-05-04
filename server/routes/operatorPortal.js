@@ -286,8 +286,14 @@ router.put('/profile', validate(schemas.operatorProfileUpdate), async (req, res,
 router.post('/test-mikrotik', async (req, res, next) => {
   try {
     const result = await testConnection(req.operator);
+    await Operator.findByIdAndUpdate(req.operator._id, {
+      $set: { healthStatus: 'OK', healthError: '', lastHealthCheck: new Date() },
+    });
     res.json({ success: true, identity: result.identity });
   } catch (err) {
+    await Operator.findByIdAndUpdate(req.operator._id, {
+      $set: { healthStatus: 'DOWN', healthError: (err.message || '').slice(0, 200), lastHealthCheck: new Date() },
+    }).catch(() => {});
     res.status(502).json({ success: false, message: err.message });
   }
 });
