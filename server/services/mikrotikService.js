@@ -28,10 +28,10 @@ const getClient = async (operator, router = null) => {
   const password = decrypt(operator?.mikrotikPass || defaultPass);
   const port = operator?.mikrotikPort || Number(defaultPort);
 
-  if (!host || !user || !password) {
+  if (!host || !user) {
     throw new Error(
       `MikroTik not configured for operator: ${operator?.name || 'default'}. ` +
-      'Set mikrotik_host, mikrotik_user, and mikrotik_pass in Platform Settings.'
+      'Set mikrotik_host and mikrotik_user in Platform Settings.'
     );
   }
 
