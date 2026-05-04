@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 
@@ -116,6 +117,7 @@ const RouterFeedback = ({ status }) => {
 };
 
 export default function Operators() {
+  const navigate = useNavigate();
   const toast = useToast();
   const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -349,7 +351,8 @@ export default function Operators() {
         }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>🏪</div>
           <div style={{ fontWeight: 600, marginBottom: '0.35rem', color: 'var(--text-2)' }}>No operators yet</div>
-          <div style={{ fontSize: '0.85rem' }}>Add your first hotspot location to get started.</div>
+          <div style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>Add your first hotspot location to get started.</div>
+          <button className="btn btn-primary" onClick={openCreate}>+ Add First Operator</button>
         </div>
       ) : (
         <div style={{
@@ -482,6 +485,11 @@ export default function Operators() {
                       Settle
                     </button>
                   )}
+                  <button className="btn btn-ghost"
+                    style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                    onClick={() => navigate(`/sessions?op=${op.shortCode}`)}>
+                    Sessions
+                  </button>
                   <button className="btn btn-ghost"
                     style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
                     onClick={() => openEdit(op)}>

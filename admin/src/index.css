@@ -199,7 +199,7 @@ body {
 }
 
 .nav-item.active {
-  background: rgba(99,102,241,0.18);
+  background: rgba(99,102,241,0.22);
   color: #fff;
   font-weight: 600;
 }
@@ -208,11 +208,11 @@ body {
   content: '';
   position: absolute;
   left: 0;
-  top: 20%;
-  bottom: 20%;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: #6366f1;
+  top: 8%;
+  bottom: 8%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--sidebar-logo);
 }
 
 .nav-item svg { opacity: 0.75; transition: opacity 0.14s; }
@@ -755,6 +755,77 @@ code {
   border-radius: 5px;
   font-size: 0.82em;
   color: var(--accent);
+}
+
+/* ── Table row hover ── */
+table tbody tr {
+  transition: background 0.12s;
+}
+table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* ── Mobile bottom navigation ── */
+.mobile-bottom-nav { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--sidebar-bg);
+    border-top: 1px solid rgba(255,255,255,0.09);
+    padding: 0.4rem 0 calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+  }
+
+  .mobile-bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.35rem 0.25rem;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: color 0.14s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+
+  .mobile-bottom-nav-item svg { opacity: 0.65; transition: opacity 0.14s; }
+
+  .mobile-bottom-nav-item.active {
+    color: var(--sidebar-logo);
+  }
+
+  .mobile-bottom-nav-item.active svg { opacity: 1; }
+
+  .mobile-bottom-nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    border-radius: 0 0 3px 3px;
+    background: var(--sidebar-logo);
+  }
+
+  /* Push main content up so it's not hidden behind nav */
+  .main {
+    padding-bottom: 72px;
+  }
 }
 
 /* ── Voucher print sheet ── */

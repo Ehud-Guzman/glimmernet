@@ -500,6 +500,24 @@ export default function Layout({ children }) {
         </div>
       </aside>
 
+      {/* Mobile bottom nav — 5 most-used routes */}
+      <nav className="mobile-bottom-nav">
+        {[
+          { to: '/',            end: true, icon: 'dashboard',    label: 'Home'     },
+          { to: '/sessions',               icon: 'sessions',     label: 'Sessions' },
+          { to: '/transactions',           icon: 'transactions', label: 'Payments' },
+          { to: '/bundles',                icon: 'bundles',      label: 'Bundles'  },
+          ...(superAdmin ? [{ to: '/operators', icon: 'operators', label: 'Operators' }] : [{ to: '/vouchers', icon: 'vouchers', label: 'Vouchers' }]),
+        ].map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.end}
+            onClick={closeSidebar}
+            className={({ isActive }) => `mobile-bottom-nav-item${isActive ? ' active' : ''}`}>
+            <Icon d={ICONS[item.icon]} size={21} />
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
+
       <main className="main">
         {/* Page info banner */}
         {bannerKey && (

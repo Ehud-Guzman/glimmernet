@@ -1176,3 +1176,131 @@ button {
     background-position: -200% 0;
   }
 }
+
+/* ── Step indicator ── */
+.step-indicator {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.step-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.step-dot-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+
+.step-dot-circle.done {
+  background: var(--accent);
+  border: 2px solid var(--accent);
+  color: #fff;
+}
+
+.step-dot-circle.active {
+  background: var(--accent-dim);
+  border: 2px solid var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.step-dot-circle.pending {
+  background: transparent;
+  border: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.step-dot-label {
+  font-size: 0.63rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.step-dot-label.active { color: var(--accent); }
+.step-dot-label.done   { color: var(--accent); opacity: 0.7; }
+
+.step-connector {
+  width: 44px;
+  height: 2px;
+  background: var(--border);
+  margin-top: 13px;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.step-connector.done { background: var(--accent); }
+
+/* ── Button active tactile feedback ── */
+.btn-pay:active:not(:disabled),
+.btn-back:active,
+.retry-btn:active {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+
+/* ── Phone validation indicator ── */
+.phone-validity {
+  display: flex;
+  align-items: center;
+  padding-right: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  transition: color 0.18s;
+}
+
+/* ── Animated check SVG ── */
+.animated-check-wrap {
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 1.25rem;
+  animation: circle-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes circle-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Browse CTA on success ── */
+.btn-browse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 1.25rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--radius-sm);
+  border: 0;
+  background: linear-gradient(180deg, rgba(var(--accent-rgb) / 0.96), rgba(var(--accent-rgb) / 0.82));
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(var(--accent-rgb) / 0.28);
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.btn-browse:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(var(--accent-rgb) / 0.32); }
+.btn-browse:active { transform: scale(0.97); }

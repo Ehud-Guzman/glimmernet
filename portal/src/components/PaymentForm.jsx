@@ -24,6 +24,8 @@ const normalizePhone = (value) => {
   return digits.slice(0, 10);
 };
 
+const isPhoneValid = (value) => /^(07|01)\d{8}$/.test(normalizePhone(value));
+
 const formatPhoneInput = (value) => {
   const normalized = normalizePhone(value);
   const trimmed = normalized.startsWith('0') ? normalized.slice(1) : normalized;
@@ -84,7 +86,7 @@ export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiate
 
       <div className="section-label">{t.mpesaNumber}</div>
 
-      <div className="phone-wrap">
+      <div className="phone-wrap" style={phone.length >= 9 ? { borderColor: isPhoneValid(phone) ? 'rgba(var(--accent-rgb) / 0.58)' : 'rgba(220,38,38,0.5)' } : {}}>
         <div className="phone-prefix">🇰🇪 +254</div>
         <input
           type="tel"
@@ -95,6 +97,11 @@ export default function PaymentForm({ bundle, mac, operatorShortCode, onInitiate
           inputMode="tel"
           maxLength={11}
         />
+        {phone.length >= 9 && (
+          <span className="phone-validity" style={{ color: isPhoneValid(phone) ? 'var(--accent)' : 'var(--danger)' }}>
+            {isPhoneValid(phone) ? '✓' : '✗'}
+          </span>
+        )}
       </div>
 
       <p className="field-hint">{t.phoneHint}</p>

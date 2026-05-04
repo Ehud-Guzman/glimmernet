@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import axios from 'axios';
 import BundleSelector from './components/BundleSelector';
 import PaymentForm from './components/PaymentForm';
@@ -103,6 +103,58 @@ export function autoLogin(username, password, hotspotLoginUrl) {
   });
   document.body.appendChild(form);
   form.submit();
+}
+
+// ── Animated check SVG (also used by StatusPoller) ───────────────────────────
+export function AnimatedCheck({ color = 'var(--accent)', size = 78 }) {
+  return (
+    <div className="animated-check-wrap" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 52 52" fill="none">
+        <circle cx="26" cy="26" r="25" stroke={color} strokeWidth="1.5" opacity="0.2" />
+        <circle cx="26" cy="26" r="25" stroke={color} strokeWidth="2"
+          strokeDasharray="157" strokeDashoffset="157" strokeLinecap="round"
+          style={{ animation: 'check-draw 0.55s ease forwards 0.1s' }} />
+        <path stroke={color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray="36" strokeDashoffset="36"
+          style={{ animation: 'check-draw 0.3s ease forwards 0.55s' }}
+          d="M14 27 l8 8 l16 -16" />
+      </svg>
+    </div>
+  );
+}
+
+// ── Step indicator ────────────────────────────────────────────────────────────
+const STEPS = [{ n: 1, label: 'Plan' }, { n: 2, label: 'Pay' }, { n: 3, label: 'Connect' }];
+
+const stepNum = (step) => {
+  if ([STEP.SELECT, STEP.TRIAL_CONFIRM, STEP.REDEEM].includes(step)) return 1;
+  if (step === STEP.PAY) return 2;
+  if ([STEP.POLLING, STEP.RESUMED].includes(step)) return 3;
+  return 0;
+};
+
+function StepIndicator({ step }) {
+  const current = stepNum(step);
+  if (current === 0) return null;
+  return (
+    <div className="step-indicator">
+      {STEPS.map((s, i) => {
+        const done   = current > s.n;
+        const active = current === s.n;
+        return (
+          <Fragment key={s.n}>
+            {i > 0 && <div className={`step-connector${done ? ' done' : ''}`} />}
+            <div className="step-dot">
+              <div className={`step-dot-circle ${done ? 'done' : active ? 'active' : 'pending'}`}>
+                {done ? '✓' : s.n}
+              </div>
+              <div className={`step-dot-label ${done ? 'done' : active ? 'active' : ''}`}>{s.label}</div>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
 }
 
 const THEME_KEY = 'portal-theme';
@@ -340,6 +392,7 @@ export default function App() {
       </aside>
 
       <div className={`portal-body step-${step.toLowerCase()}`}>
+        <StepIndicator step={step} />
         <div className="portal-form-header">
           <div className="small-icon"><BrandIcon logoUrl={brand.logoUrl} accentColor={accentColor} size={20} /></div>
           <div>
@@ -359,7 +412,7 @@ export default function App() {
 
         {step === STEP.RESUMED && resumedSession && (
           <div className="status-screen">
-            <div className="status-icon success">✅</div>
+            <AnimatedCheck color={accentColor} />
             <h2>{t.welcomeBack}</h2>
             <p>{t.activeSession}</p>
             {resumedSession.expiresAt && (() => {

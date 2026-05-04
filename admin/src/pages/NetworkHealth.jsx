@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
 
@@ -40,6 +41,7 @@ function ago(date) {
 }
 
 export default function NetworkHealth() {
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const [routers, setRouters] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -103,8 +105,19 @@ export default function NetworkHealth() {
 
       {loading ? <div className="spinner" /> : (
         Object.keys(grouped).length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)', fontSize: '0.88rem' }}>
-            {filter ? `No routers with status ${filter}` : 'No routers configured yet'}
+          <div style={{ textAlign: 'center', padding: '3rem 2rem', color: 'var(--text-3)' }}>
+            {filter ? (
+              <span style={{ fontSize: '0.88rem' }}>No routers with status <strong>{filter}</strong></span>
+            ) : (
+              <>
+                <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📡</div>
+                <div style={{ fontWeight: 600, color: 'var(--text-2)', marginBottom: '0.35rem' }}>No routers configured yet</div>
+                <div style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>Add a MikroTik host to an operator to see live health data here.</div>
+                <button className="btn btn-ghost" onClick={() => navigate('/operators')}>
+                  Go to Operators →
+                </button>
+              </>
+            )}
           </div>
         ) : (
           Object.values(grouped).map(({ operator, items }) => (

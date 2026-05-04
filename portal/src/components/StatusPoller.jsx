@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { autoLogin } from '../App';
+import { autoLogin, AnimatedCheck } from '../App';
 import { useLang } from '../context/LangContext';
 
 const POLL_INTERVAL = 3000;
@@ -134,7 +134,7 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
 
   if (phase === 'success') return (
     <div className="status-screen">
-      <div className="status-icon success">✅</div>
+      <AnimatedCheck />
       <h2>{t.connected}</h2>
       <p>{t.paymentConfirmed}</p>
       {session?.expiresAt && (
@@ -144,6 +144,9 @@ export default function StatusPoller({ checkoutRequestId, brand = {} }) {
           })}
         </div>
       )}
+      <a href="https://www.google.com" className="btn-browse">
+        Start Browsing →
+      </a>
     </div>
   );
 
