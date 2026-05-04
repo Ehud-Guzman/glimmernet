@@ -157,6 +157,7 @@ export default function Operators() {
   const openEdit = (op) => {
     setForm({
       ...op,
+      mikrotikPass: '',
       platformFeePercent: op.platformFeePercent !== null ? String(op.platformFeePercent) : '',
       mikrotikPort: String(op.mikrotikPort || 8728),
       brandName: op.brandName || '',
