@@ -188,8 +188,19 @@ export default function Operators() {
         mikrotikPort: form.mikrotikPort,
       });
       setRouterStatus({ type: 'ok', identity: res.data.data?.identity || 'unknown' });
+      setOperators((items) => items.map((op) => (
+        op._id === modal._id
+          ? { ...op, healthStatus: 'OK', healthError: '', lastHealthCheck: new Date().toISOString() }
+          : op
+      )));
     } catch (err) {
-      setRouterStatus({ type: 'err', message: err.response?.data?.message || 'Connection failed — check host and credentials.' });
+      const message = err.response?.data?.message || 'Connection failed — check host and credentials.';
+      setRouterStatus({ type: 'err', message });
+      setOperators((items) => items.map((op) => (
+        op._id === modal._id
+          ? { ...op, healthStatus: 'DOWN', healthError: message, lastHealthCheck: new Date().toISOString() }
+          : op
+      )));
     } finally {
       setTestingRouter(false);
     }
