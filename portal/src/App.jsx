@@ -6,6 +6,7 @@ import StatusPoller from './components/StatusPoller';
 import RedeemForm from './components/RedeemForm';
 import UsageWidget from './components/UsageWidget';
 import WalletPanel from './components/WalletPanel';
+import HelpSheet from './components/HelpSheet';
 import { useLang } from './context/LangContext';
 
 const params = new URLSearchParams(window.location.search);
@@ -511,6 +512,10 @@ export default function App() {
             onBack={() => setStep(STEP.SELECT)}
           />
         )}
+
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <HelpSheet accentColor={accentColor} supportParts={supportParts} />
+        </div>
 
         <p className="portal-footer">{footerText}</p>
         <p className="portal-footer" style={{ marginTop: '0.35rem' }}>
