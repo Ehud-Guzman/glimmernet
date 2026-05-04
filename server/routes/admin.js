@@ -928,10 +928,21 @@ router.post('/transactions/:id/retry-grant', async (req, res, next) => {
 
 router.get('/network/health', isSuperAdmin, async (req, res, next) => {
   try {
-    const routers = await OperatorRouter.find()
-      .populate('operatorId', 'name shortCode')
-      .select('-pass')
-      .sort({ operatorId: 1, name: 1 });
+    const operators = await Operator.find({ mikrotikHost: { $nin: ['', null] } })
+      .select('name shortCode mikrotikHost mikrotikPort healthStatus healthError lastHealthCheck')
+      .sort({ name: 1 });
+
+    const routers = operators.map((op) => ({
+      _id: op._id,
+      operatorId: { _id: op._id, name: op.name, shortCode: op.shortCode },
+      name: 'Main Router',
+      host: op.mikrotikHost,
+      port: op.mikrotikPort || 8728,
+      hotspotServer: '',
+      healthStatus: op.healthStatus || 'UNKNOWN',
+      healthError: op.healthError || '',
+      lastHealthCheck: op.lastHealthCheck,
+    }));
 
     const summary = { total: routers.length, ok: 0, down: 0, unknown: 0 };
     for (const r of routers) summary[r.healthStatus.toLowerCase()]++;
