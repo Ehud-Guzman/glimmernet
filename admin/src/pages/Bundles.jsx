@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
 import { isSuperAdmin } from '../utils/auth';
+import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const EMPTY = { name: '', price: '', durationMinutes: '', dataMB: '', speedLimitMbps: '', mikrotikProfile: '', isActive: true, multiDevice: false, maxDevices: '', validFromHour: '', validToHour: '' };
 
@@ -14,6 +16,7 @@ const fmtDuration = (min) => {
 };
 
 export default function Bundles() {
+  const toast = useToast();
   const superAdmin = isSuperAdmin();
   const [operators, setOperators] = useState([]);
   const [selectedOpId, setSelectedOpId] = useState(''); // '' = global/platform
@@ -23,6 +26,7 @@ export default function Bundles() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [error, setError] = useState('');
 
   // Load operators once for the selector
@@ -92,12 +96,17 @@ export default function Bundles() {
     }
   };
 
-  const handleDelete = async (bundle) => {
-    if (!window.confirm(`Delete "${bundle.name}"? This cannot be undone.`)) return;
-    setDeleting(bundle._id);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(deleteTarget._id);
     try {
-      await client.delete(`/admin/bundles/${bundle._id}`);
+      await client.delete(`/admin/bundles/${deleteTarget._id}`);
+      toast.success(`Bundle "${deleteTarget.name}" deleted.`);
+      setDeleteTarget(null);
       loadBundles();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not delete bundle.');
+      setDeleteTarget(null);
     } finally {
       setDeleting(null);
     }
@@ -191,7 +200,7 @@ export default function Bundles() {
                       {superAdmin && (
                         <button className="btn btn-danger" style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
                           disabled={deleting === b._id}
-                          onClick={() => handleDelete(b)}>
+                          onClick={() => setDeleteTarget(b)}>
                           {deleting === b._id ? '…' : 'Delete'}
                         </button>
                       )}
@@ -203,6 +212,20 @@ export default function Bundles() {
           </table>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete Bundle"
+          message={`Delete "${deleteTarget.name}"? This cannot be undone. Any active sessions using this bundle will not be affected, but the bundle will no longer be available for purchase.`}
+          confirmLabel="Delete"
+          danger
+          loading={!!deleting}
+          loadingLabel="Deleting…"
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {/* Add / Edit Bundle Modal */}
       {modal && (

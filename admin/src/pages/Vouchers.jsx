@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import client from '../api/client';
 import { isSuperAdmin } from '../utils/auth';
 import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const STATUS_COLORS = {
   ACTIVE: '#00c853',
@@ -71,6 +72,8 @@ export default function Vouchers() {
   const [filterCode, setFilterCode] = useState('');
 
   const [modal, setModal] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState(null);
+  const [revoking, setRevoking] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState(null);
@@ -96,14 +99,19 @@ export default function Vouchers() {
   useEffect(() => { fetchBundles(); }, []);
   useEffect(() => { fetchVouchers(); }, [page, filterType, filterStatus, filterCode]);
 
-  const handleRevoke = async (id) => {
-    if (!confirm('Revoke this voucher? This cannot be undone.')) return;
+  const handleRevoke = async () => {
+    if (!revokeTarget) return;
+    setRevoking(true);
     try {
-      await client.put(`/admin/vouchers/${id}/revoke`);
+      await client.put(`/admin/vouchers/${revokeTarget._id}/revoke`);
       toast.success('Voucher revoked.');
+      setRevokeTarget(null);
       fetchVouchers();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Revoke failed.');
+      setRevokeTarget(null);
+    } finally {
+      setRevoking(false);
     }
   };
 
@@ -146,6 +154,19 @@ export default function Vouchers() {
 
   return (
     <>
+      {revokeTarget && (
+        <ConfirmModal
+          title="Revoke Voucher"
+          message={`Revoke code "${revokeTarget.code}"? This cannot be undone — the voucher will no longer be redeemable.`}
+          confirmLabel="Revoke"
+          danger
+          loading={revoking}
+          loadingLabel="Revoking…"
+          onConfirm={handleRevoke}
+          onCancel={() => setRevokeTarget(null)}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div className="page-title" style={{ marginBottom: 0 }}>Vouchers & Codes</div>
@@ -257,7 +278,7 @@ export default function Vouchers() {
                         <button
                           className="btn btn-ghost"
                           style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', color: '#f44336' }}
-                          onClick={() => handleRevoke(v._id)}
+                          onClick={() => setRevokeTarget(v)}
                         >
                           Revoke
                         </button>

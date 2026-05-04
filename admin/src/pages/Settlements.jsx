@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 const STATUS_COLORS = {
   PENDING: '#ff9800',
@@ -16,7 +17,7 @@ function ReconciliationPanel() {
   useEffect(() => {
     client.get('/admin/analytics/reconciliation')
       .then((r) => setData(r.data.data))
-      .catch(() => {});
+      .catch(() => { /* reconciliation data is supplementary — failure is non-critical */ });
   }, []);
 
   if (!data) return null;
@@ -56,6 +57,7 @@ function ReconciliationPanel() {
 }
 
 export default function Settlements() {
+  const toast = useToast();
   const [settlements, setSettlements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -83,10 +85,11 @@ export default function Settlements() {
     setMarkSaving(true);
     try {
       await client.put(`/admin/settlements/${markPaidModal._id}/mark-paid`, markForm);
+      toast.success('Settlement marked as paid.');
       setMarkPaidModal(null);
       fetch();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update settlement.');
+      toast.error(err.response?.data?.message || 'Failed to update settlement.');
     } finally {
       setMarkSaving(false);
     }

@@ -133,6 +133,15 @@ const exportLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Session resume GET — public MAC lookup; tighter than general to prevent MAC enumeration (30/min per IP)
+const resumeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many session lookup requests. Please wait a minute and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Specific limiters must be registered before the general one
@@ -152,6 +161,7 @@ app.use('/api/v1/admin/transactions/export',     exportLimiter);
 app.use('/api/v1/admin/vouchers/export',         exportLimiter);
 app.use('/api/v1/operator/vouchers/export',      exportLimiter);
 app.use('/api/v1/disputes',                      redeemLimiter); // same anti-spam rate as voucher redemption
+app.use('/api/v1/session/resume',                resumeLimiter);
 app.use('/api/v1/operator/sub-users',            operatorWriteLimiter);
 app.use('/api/v1/operator/routers',              operatorWriteLimiter);
 app.use('/api/',                                 generalLimiter);

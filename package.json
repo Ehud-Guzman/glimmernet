@@ -7,8 +7,11 @@
     "start": "node server/server.js",
     "dev": "nodemon --watch server --watch .env server/server.js",
     "build": "npm run build --prefix portal",
+    "build:admin": "npm run build --prefix admin",
+    "build:all": "npm run build --prefix portal && npm run build --prefix admin",
     "seed:bundles": "node server/scripts/seedBundles.js",
-    "seed": "node server/scripts/seedAll.js"
+    "seed": "node server/scripts/seedAll.js",
+    "check:env": "node -e \"const r=['MONGO_URI','JWT_SECRET','ENCRYPTION_KEY'];const m=r.filter(k=>!process.env[k]);if(m.length){console.error('Missing required env vars:',m.join(', '));process.exit(1);}console.log('Env OK');\""
   },
   "dependencies": {
     "axios": "^1.7.2",

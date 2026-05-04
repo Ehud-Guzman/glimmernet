@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
 import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const fmtDuration = (mins) => {
   if (!mins) return '—';
@@ -178,6 +179,7 @@ export default function Sessions() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [terminating, setTerminating] = useState(null);
+  const [terminateTarget, setTerminateTarget] = useState(null);
   const [extendTarget, setExtendTarget] = useState(null);
   const [extendMins, setExtendMins] = useState('');
   const [extending, setExtending] = useState(false);
@@ -198,15 +200,17 @@ export default function Sessions() {
 
   useEffect(() => { fetchSessions(); }, [page]);
 
-  const terminate = async (id) => {
-    if (!confirm('Terminate this session?')) return;
-    setTerminating(id);
+  const terminate = async () => {
+    if (!terminateTarget) return;
+    setTerminating(terminateTarget._id);
     try {
-      await client.delete(`/admin/sessions/${id}`);
+      await client.delete(`/admin/sessions/${terminateTarget._id}`);
       toast.success('Session terminated.');
+      setTerminateTarget(null);
       fetchSessions();
     } catch (e) {
       toast.error(e.response?.data?.message || 'Could not terminate session.');
+      setTerminateTarget(null);
     } finally {
       setTerminating(null);
     }
@@ -250,6 +254,19 @@ export default function Sessions() {
 
   return (
     <>
+      {terminateTarget && (
+        <ConfirmModal
+          title="Terminate Session"
+          message={`End the active session for ${terminateTarget.phone || terminateTarget.username}? They will lose internet access immediately.`}
+          confirmLabel="Terminate"
+          danger
+          loading={!!terminating}
+          loadingLabel="Terminating…"
+          onConfirm={terminate}
+          onCancel={() => setTerminateTarget(null)}
+        />
+      )}
+
       {extendTarget && (
         <div className="modal-overlay" onClick={() => { setExtendTarget(null); setExtendMins(''); setExtendErr(''); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 340 }}>
@@ -340,7 +357,7 @@ export default function Sessions() {
                         <button
                           className="btn btn-danger"
                           style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem' }}
-                          onClick={() => terminate(s._id)}
+                          onClick={() => setTerminateTarget(s)}
                           disabled={terminating === s._id}
                         >
                           Terminate

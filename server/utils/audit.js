@@ -18,7 +18,6 @@ const audit = async ({
     await AdminLog.create({ actor, actorModel, actorName, action, targetModel, targetId, meta });
   } catch (err) {
     logger.warn('Audit log write failed', { action, message: err.message });
-    console.error('[audit] write failed:', action, err.message);
   }
 };
 

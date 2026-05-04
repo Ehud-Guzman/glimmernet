@@ -21,8 +21,7 @@ client.interceptors.response.use(
     if (status === 401 && !url?.includes('/auth/login')) {
       localStorage.removeItem('admin_token');
       window.location.href = '/login';
-    } else {
-      // Log every non-401 API error so it's visible in DevTools
+    } else if (import.meta.env.DEV) {
       console.error(`[API] ${method} ${url} → ${status ?? 'ERR'}: ${message}`);
     }
 

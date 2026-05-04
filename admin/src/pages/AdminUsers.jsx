@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
 import { getName } from '../utils/auth';
+import { useToast } from '../context/ToastContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ROLE_COLORS = { superadmin: '#00c853', admin: '#2196f3' };
 const ROLE_LABELS = { superadmin: 'Superadmin', admin: 'Admin' };
@@ -8,17 +10,27 @@ const ROLE_LABELS = { superadmin: 'Superadmin', admin: 'Admin' };
 const EMPTY = { name: '', email: '', password: '', role: 'admin' };
 
 export default function AdminUsers() {
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | user obj
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [toggleTarget, setToggleTarget] = useState(null); // user to activate/deactivate
+  const [toggling, setToggling] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null); // user to reset password
+  const [resetPass, setResetPass] = useState('');
+  const [resetSaving, setResetSaving] = useState(false);
+  const [resetError, setResetError] = useState('');
   const myName = getName();
 
   const fetch = () => {
     setLoading(true);
-    client.get('/admin/users').then((r) => setUsers(r.data.data)).finally(() => setLoading(false));
+    client.get('/admin/users')
+      .then((r) => setUsers(r.data.data))
+      .catch(() => toast.error('Could not load admin users.'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetch(); }, []);
@@ -40,8 +52,10 @@ export default function AdminUsers() {
       if (modal === 'create') {
         if (!form.password) { setError('Password is required for new accounts.'); setSaving(false); return; }
         await client.post('/admin/users', { ...payload, password: form.password });
+        toast.success('Admin user created.');
       } else {
         await client.put(`/admin/users/${modal._id}`, payload);
+        toast.success('User updated.');
       }
       setModal(null);
       fetch();
@@ -52,25 +66,35 @@ export default function AdminUsers() {
     }
   };
 
-  const toggleActive = async (user) => {
-    const action = user.isActive ? 'deactivate' : 'reactivate';
-    if (!confirm(`${user.isActive ? 'Deactivate' : 'Reactivate'} ${user.name}?`)) return;
+  const confirmToggle = async () => {
+    if (!toggleTarget) return;
+    setToggling(true);
     try {
-      await client.put(`/admin/users/${user._id}`, { isActive: !user.isActive });
+      await client.put(`/admin/users/${toggleTarget._id}`, { isActive: !toggleTarget.isActive });
+      toast.success(`${toggleTarget.name} ${toggleTarget.isActive ? 'deactivated' : 'reactivated'}.`);
+      setToggleTarget(null);
       fetch();
     } catch (err) {
-      alert(err.response?.data?.message || `Failed to ${action} user`);
+      toast.error(err.response?.data?.message || 'Failed to update user status.');
+      setToggleTarget(null);
+    } finally {
+      setToggling(false);
     }
   };
 
-  const resetPassword = async (user) => {
-    const newPass = prompt(`Enter new password for ${user.name}:`);
-    if (!newPass || newPass.length < 6) { alert('Password must be at least 6 characters.'); return; }
+  const submitResetPassword = async (e) => {
+    e.preventDefault();
+    if (resetPass.length < 6) { setResetError('Password must be at least 6 characters.'); return; }
+    setResetSaving(true); setResetError('');
     try {
-      await client.put(`/admin/users/${user._id}`, { password: newPass });
-      alert('Password updated successfully.');
+      await client.put(`/admin/users/${resetTarget._id}`, { password: resetPass });
+      toast.success(`Password reset for ${resetTarget.name}.`);
+      setResetTarget(null);
+      setResetPass('');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to reset password');
+      setResetError(err.response?.data?.message || 'Failed to reset password.');
+    } finally {
+      setResetSaving(false);
     }
   };
 
@@ -82,7 +106,11 @@ export default function AdminUsers() {
       </div>
 
       <div className="table-wrap">
-        {loading ? <div className="spinner" /> : (
+        {loading ? <div className="spinner" /> : users.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>
+            No admin users found.
+          </div>
+        ) : (
           <table>
             <thead>
               <tr>
@@ -137,7 +165,7 @@ export default function AdminUsers() {
                       </button>
                       <button className="btn btn-ghost"
                         style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem' }}
-                        onClick={() => resetPassword(u)}>
+                        onClick={() => { setResetTarget(u); setResetPass(''); setResetError(''); }}>
                         Reset PWD
                       </button>
                       <button className="btn btn-ghost"
@@ -145,7 +173,7 @@ export default function AdminUsers() {
                           padding: '0.25rem 0.5rem', fontSize: '0.72rem',
                           color: u.isActive ? '#f44336' : '#00c853',
                         }}
-                        onClick={() => toggleActive(u)}>
+                        onClick={() => setToggleTarget(u)}>
                         {u.isActive ? 'Deactivate' : 'Reactivate'}
                       </button>
                     </div>
@@ -157,6 +185,7 @@ export default function AdminUsers() {
         )}
       </div>
 
+      {/* Add / Edit modal */}
       {modal && (
         <div className="modal-overlay" onClick={() => setModal(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
@@ -199,6 +228,53 @@ export default function AdminUsers() {
                 <button type="button" className="btn btn-ghost" onClick={() => setModal(null)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activate / Deactivate confirmation */}
+      {toggleTarget && (
+        <ConfirmModal
+          title={toggleTarget.isActive ? 'Deactivate User' : 'Reactivate User'}
+          message={`${toggleTarget.isActive ? 'Deactivate' : 'Reactivate'} ${toggleTarget.name}? ${toggleTarget.isActive ? 'They will lose access to the admin panel.' : 'They will regain access to the admin panel.'}`}
+          confirmLabel={toggleTarget.isActive ? 'Deactivate' : 'Reactivate'}
+          danger={toggleTarget.isActive}
+          loading={toggling}
+          loadingLabel={toggleTarget.isActive ? 'Deactivating…' : 'Reactivating…'}
+          onConfirm={confirmToggle}
+          onCancel={() => setToggleTarget(null)}
+        />
+      )}
+
+      {/* Reset Password modal */}
+      {resetTarget && (
+        <div className="modal-overlay" onClick={() => setResetTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+            <h3>Reset Password</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-3)', margin: '0.25rem 0 1rem' }}>
+              Set a new password for <strong>{resetTarget.name}</strong>.
+            </p>
+            <form onSubmit={submitResetPassword}>
+              <div className="form-group">
+                <label>New Password</label>
+                <input
+                  type="password"
+                  value={resetPass}
+                  required
+                  minLength={6}
+                  autoFocus
+                  placeholder="At least 6 characters"
+                  onChange={(e) => { setResetPass(e.target.value); setResetError(''); }}
+                />
+              </div>
+              {resetError && <p className="error-msg">{resetError}</p>}
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setResetTarget(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={resetSaving}>
+                  {resetSaving ? 'Saving…' : 'Set Password'}
                 </button>
               </div>
             </form>

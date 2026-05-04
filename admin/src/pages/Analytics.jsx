@@ -175,15 +175,17 @@ function RevenueTab({ revenue, bundles, hourly, operators, devices }) {
 function ChurnTab() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     client.get('/admin/analytics/churn')
       .then((r) => setData(r.data.data))
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="spinner" style={{ margin: '3rem auto' }} />;
+  if (error) return <Card><ChartEmpty message="Could not load churn data. Check your connection or try refreshing." /></Card>;
   if (!data) return <Card><ChartEmpty message="Churn data unavailable." /></Card>;
 
   const retentionPct = Math.round((data.retentionRate || 0) * 100) / 100;
@@ -235,15 +237,17 @@ function ChurnTab() {
 function BandwidthTab() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     client.get('/admin/analytics/bandwidth')
       .then((r) => setData(r.data.data))
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="spinner" style={{ margin: '3rem auto' }} />;
+  if (error) return <Card><ChartEmpty message="Could not load bandwidth data. Check your connection or try refreshing." /></Card>;
   if (!data || !data.length) return (
     <Card>
       <ChartEmpty message="No bandwidth data yet. Bandwidth is captured when sessions expire — check back after some sessions have closed." />

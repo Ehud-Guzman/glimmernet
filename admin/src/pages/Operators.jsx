@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import client from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 const EMPTY = {
   shortCode: '', name: '', businessName: '', ownerPhone: '',
@@ -115,6 +116,7 @@ const RouterFeedback = ({ status }) => {
 };
 
 export default function Operators() {
+  const toast = useToast();
   const [operators, setOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | 'create' | operator obj
@@ -255,9 +257,10 @@ export default function Operators() {
   const handleApprove = async (id) => {
     try {
       await client.put(`/admin/operators/${id}`, { status: 'ACTIVE' });
+      toast.success('Operator approved.');
       load();
     } catch (err) {
-      console.error('Approve failed', err);
+      toast.error(err.response?.data?.message || 'Failed to approve operator.');
     }
   };
 

@@ -284,6 +284,7 @@ function CustomerLookup() {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
   const [secondsAgo, setSecondsAgo]   = useState(0);
   const [lastUpdated, setLastUpdated] = useState(null);
   const superAdmin = isSuperAdmin();
@@ -291,8 +292,8 @@ export default function Dashboard() {
 
   const fetchStats = () => {
     client.get('/admin/stats')
-      .then((r) => { setStats(r.data.data); setLastUpdated(Date.now()); setSecondsAgo(0); })
-      .catch(() => {});
+      .then((r) => { setStats(r.data.data); setLastUpdated(Date.now()); setSecondsAgo(0); setFetchError(false); })
+      .catch(() => setFetchError(true));
   };
 
   useEffect(() => {
@@ -301,6 +302,15 @@ export default function Dashboard() {
     timerRef.current = setInterval(() => setSecondsAgo((s) => s + 1), 1000);
     return () => { clearInterval(pollId); clearInterval(timerRef.current); };
   }, []);
+
+  if (!stats && fetchError) return (
+    <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-3)' }}>
+      <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>⚠</div>
+      <div style={{ fontWeight: 600, color: 'var(--text-2)', marginBottom: '0.5rem' }}>Could not load dashboard stats</div>
+      <div style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>Check your connection or server logs.</div>
+      <button className="btn btn-ghost" onClick={fetchStats}>Retry</button>
+    </div>
+  );
 
   if (!stats) return <div className="spinner" />;
 
