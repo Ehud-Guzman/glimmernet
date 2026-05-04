@@ -130,8 +130,8 @@ export default function HelpSheet({ accentColor = '#00c853', supportParts = [] }
       </button>
 
       {open && (
-        <div className="help-overlay" onClick={close} role="dialog" aria-modal="true">
-          <div className="help-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="help-overlay" role="dialog" aria-modal="true">
+          <div className="help-sheet">
 
             {/* Header */}
             <div className="help-sheet-header">
