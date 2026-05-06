@@ -262,7 +262,11 @@ router.put('/profile', validate(schemas.operatorProfileUpdate), async (req, res,
       updates.passwordChangedAt = new Date();
       delete updates.portalPassword;
     }
-    if (updates.mikrotikPass) updates.mikrotikPass = encryptField(updates.mikrotikPass);
+    if (updates.mikrotikPass) {
+      updates.mikrotikPass = encryptField(updates.mikrotikPass);
+    } else {
+      delete updates.mikrotikPass;
+    }
 
     const op = await Operator.findByIdAndUpdate(
       req.operator._id,
@@ -291,9 +295,6 @@ router.post('/test-mikrotik', async (req, res, next) => {
     });
     res.json({ success: true, identity: result.identity });
   } catch (err) {
-    await Operator.findByIdAndUpdate(req.operator._id, {
-      $set: { healthStatus: 'DOWN', healthError: (err.message || '').slice(0, 200), lastHealthCheck: new Date() },
-    }).catch(() => {});
     res.status(502).json({ success: false, message: err.message });
   }
 });

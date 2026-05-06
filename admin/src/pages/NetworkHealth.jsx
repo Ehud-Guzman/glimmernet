@@ -63,6 +63,13 @@ export default function NetworkHealth() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-refresh every 5 minutes (300000ms)
+  useEffect(() => {
+    const interval = setInterval(() => load(), 300000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+
   const grouped = {};
   for (const r of routers) {
     if (filter && r.healthStatus !== filter) continue;

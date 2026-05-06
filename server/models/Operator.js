@@ -59,6 +59,8 @@ const OperatorSchema = new mongoose.Schema({
   lastHealthCheck: { type: Date, default: null },
   healthStatus: { type: String, enum: ['OK', 'DOWN', 'UNKNOWN'], default: 'UNKNOWN' },
   healthError: { type: String, default: '' },
+  healthFailureCount: { type: Number, default: 0 },
+  healthSuccessCount: { type: Number, default: 0 },
   // Scheduled email reports
   reportEmailEnabled: { type: Boolean, default: false },
   reportFrequency: { type: String, enum: ['daily', 'weekly'], default: 'weekly' },

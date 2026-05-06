@@ -312,8 +312,9 @@ router.get('/transactions/export', async (req, res, next) => {
   }
 });
 
-// ── MikroTik health check ─────────────────────────────────────────────────────
-
+// ── Platform MikroTik health check ─────────────────────────────────────────────
+// This route tests the global default MikroTik settings used by the platform.
+// It does not validate the per-operator host configured on each operator record.
 router.get('/health/mikrotik', async (req, res, next) => {
   try {
     const result = await testConnection(null);
@@ -543,7 +544,11 @@ router.put('/operators/:id', isSuperAdmin, validate(schemas.operatorUpdate), asy
       rest.passwordHash = await bcrypt.hash(portalPassword, 12);
       rest.passwordChangedAt = new Date();
     }
-    if (rest.mikrotikPass) rest.mikrotikPass = encryptField(rest.mikrotikPass);
+    if (rest.mikrotikPass) {
+      rest.mikrotikPass = encryptField(rest.mikrotikPass);
+    } else {
+      delete rest.mikrotikPass;
+    }
     const op = await Operator.findByIdAndUpdate(req.params.id, rest, { new: true, runValidators: true });
     if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });
     await audit({
@@ -627,11 +632,6 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
     else if (/ETIMEDOUT|ECONNRESET|timed out/i.test(raw)) friendly = 'Router unreachable — check the IP address and that this server can reach the router. If the router is on a local network, the cloud backend cannot reach it directly.';
     else if (/login|cannot log in|bad credentials|invalid user/i.test(raw)) friendly = 'Login failed — check the API username and password.';
     else if (/ENOTFOUND|getaddrinfo/.test(raw)) friendly = 'Hostname not found — use an IP address, not a domain name.';
-    if (req.params.id) {
-      await Operator.findByIdAndUpdate(req.params.id, {
-        $set: { healthStatus: 'DOWN', healthError: friendly.slice(0, 200), lastHealthCheck: new Date() },
-      }).catch(() => {});
-    }
     res.status(400).json({ success: false, message: friendly });
   }
 });

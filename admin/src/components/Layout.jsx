@@ -470,9 +470,9 @@ export default function Layout({ children }) {
         {/* Footer */}
         <div className="sidebar-footer">
           {mikrotikStatus !== null && (
-            <div className={`router-status router-status--${mikrotikStatus}`} title={`Router ${mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}`}>
+            <div className={`router-status router-status--${mikrotikStatus}`} title={`Platform router ${mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}`}>
               <span className="router-dot" />
-              <span>Router {mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}</span>
+              <span>Platform router {mikrotikStatus === 'ok' ? 'connected' : 'unreachable'}</span>
             </div>
           )}
           <div className="sidebar-user">

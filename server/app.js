@@ -30,6 +30,16 @@ app.set('trust proxy', 1);
 
 app.use(helmet({ hsts: { maxAge: 31536000, includeSubDomains: true } }));
 
+app.set('etag', false);
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/v1')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 // CORS — checks ALLOWED_ORIGINS env var first (static, set on Render), then DB setting
 // (dynamic, editable via admin dashboard). Requests with no origin are always allowed.
 const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];

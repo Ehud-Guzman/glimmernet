@@ -147,6 +147,13 @@ export default function Operators() {
 
   useEffect(() => { load(); }, []);
 
+  // Auto-refresh operators every 5 minutes to catch health status changes from cron
+  useEffect(() => {
+    const interval = setInterval(() => load(), 300000);
+    return () => clearInterval(interval);
+  }, []);
+
+
   useEffect(() => {
     client.get('/admin/stats').then((r) => {
       if (r.data.data?.feePercent != null) setGlobalFeePercent(r.data.data.feePercent);
@@ -221,6 +228,9 @@ export default function Operators() {
       trialMinutes: Number(form.trialMinutes) || 0,
       ...(portalPassword ? { portalPassword } : {}),
     };
+    if (!isCreate && !payload.mikrotikPass) {
+      delete payload.mikrotikPass;
+    }
     try {
       if (isCreate) {
         await client.post('/admin/operators', payload);
@@ -338,7 +348,7 @@ export default function Operators() {
         }}>
           {[
             { label: 'Operators', value: operators.length },
-            { label: 'Active', value: activeCount },
+            { label: 'Active Accounts', value: activeCount },
             { label: 'Pending Wallets', value: fmt(totalWallet) },
             { label: 'Lifetime Volume', value: fmt(totalLifetime) },
           ].map(({ label, value }) => (
@@ -417,7 +427,7 @@ export default function Operators() {
                       </div>
                     )}
                   </div>
-                  {/* Status badge */}
+                  {/* Account status badge */}
                   <span style={{
                     flexShrink: 0,
                     fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px',
@@ -427,7 +437,7 @@ export default function Operators() {
                         ? { background: '#fef3c722', color: '#d97706', border: '1px solid #d9770688' }
                         : { background: '#fee2e222', color: 'var(--red)', border: '1px solid #fca5a544' }),
                   }}>
-                    {op.status}
+                    Account: {op.status}
                   </span>
                 </div>
 
@@ -453,7 +463,7 @@ export default function Operators() {
                 {/* Router + contact row */}
                 <div style={{ padding: '0.65rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: 38 }}>
                   <span style={{ fontSize: '0.72rem', color: healthColor, fontWeight: 600 }}>
-                    ● {health}
+                    Router: ● {health}
                   </span>
                   {op.mikrotikHost ? (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-3)', fontFamily: 'monospace' }}>{op.mikrotikHost}</span>
@@ -646,7 +656,7 @@ export default function Operators() {
                         onChange={(e) => setField('businessName', e.target.value)} />
                     </div>
                     <div className="form-group">
-                      <label>Status</label>
+                      <label>Account Status</label>
                       <select value={form.status} onChange={(e) => setField('status', e.target.value)}>
                         {form.status === 'PENDING' && <option value="PENDING" disabled>PENDING (awaiting approval)</option>}
                         <option value="ACTIVE">Active</option>

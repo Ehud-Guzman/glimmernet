@@ -7,6 +7,9 @@ const client = axios.create({
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers = config.headers || {};
+  config.headers['Cache-Control'] = 'no-cache';
+  config.headers.Pragma = 'no-cache';
   return config;
 });
 

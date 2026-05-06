@@ -13,7 +13,7 @@ const getClient = async (operator, router = null) => {
   if (router?.host) {
     const password = decrypt(router.pass || '');
     if (!password) throw new Error(`MikroTik password not set for router: ${router.name}`);
-    return new RouterOSAPI({ host: router.host, user: router.user, password, port: router.port || 8728, timeout: 10 });
+    return new RouterOSAPI({ host: router.host, user: router.user, password, port: router.port || 8728, timeout: 30 });
   }
 
   const [defaultHost, defaultUser, defaultPass, defaultPort] = await Promise.all([
@@ -35,7 +35,7 @@ const getClient = async (operator, router = null) => {
     );
   }
 
-  return new RouterOSAPI({ host, user, password, port, timeout: 10 });
+  return new RouterOSAPI({ host, user, password, port, timeout: 30 });
 };
 
 const addHotspotUser = async (operator, { username, password, profile, comment, dataMB }) => {
