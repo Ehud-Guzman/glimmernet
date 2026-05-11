@@ -862,7 +862,7 @@ function FailuresTab({ failures, onRetry }) {
 // ── Routers Tab ───────────────────────────────────────────────────────────────
 const EMPTY_ROUTER = { name: '', host: '', port: '8728', user: '', pass: '', hotspotServer: 'hotspot1', isActive: true };
 
-function RouterModal({ router, onClose, onSuccess }) {
+function RouterModal({ router, onClose, onSuccess, onStatusChanged }) {
   const isEdit = !!router?._id;
   const [form, setForm] = useState(router ? {
     name: router.name, host: router.host, port: String(router.port || 8728),
@@ -880,8 +880,13 @@ function RouterModal({ router, onClose, onSuccess }) {
     try {
       await apiPost(`/routers/${router?._id || 'new'}/test`, form);
       setTestMsg('Connected!');
+      onStatusChanged?.(router._id, { healthStatus: 'OK', healthError: '', lastHealthCheck: new Date().toISOString() });
     } catch (e) {
-      setTestMsg(e.response?.data?.message || 'Connection failed');
+      const message = e.response?.data?.message || 'Connection failed';
+      setTestMsg(message);
+      if (router?._id) {
+        onStatusChanged?.(router._id, { healthStatus: 'DOWN', healthError: message, lastHealthCheck: new Date().toISOString() });
+      }
     } finally { setTesting(false); }
   };
 
@@ -999,6 +1004,7 @@ function RoutersTab() {
           router={modal === 'new' ? null : modal}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); load(); }}
+          onStatusChanged={(id, patch) => setRouters((items) => items.map((r) => (r._id === id ? { ...r, ...patch } : r)))}
         />
       )}
       {deleteTarget && (

@@ -26,6 +26,17 @@ const router = express.Router();
 const isSuperAdmin = requireRole('superadmin');
 
 const clampLimit = (val, max = 100) => Math.min(Math.max(1, Number(val) || 20), max);
+const HEALTH_STALE_MS = 10 * 60 * 1000;
+
+const normalizeHealthStatus = (status, lastHealthCheck) => {
+  if (!lastHealthCheck) return status || 'UNKNOWN';
+  const checkedAt = new Date(lastHealthCheck).getTime();
+  if (!Number.isFinite(checkedAt)) return status || 'UNKNOWN';
+  if (status === 'OK' && Date.now() - checkedAt > HEALTH_STALE_MS) return 'UNKNOWN';
+  return status || 'UNKNOWN';
+};
+
+const healthCheckedBy = () => (process.env.RENDER_SERVICE_NAME ? 'render' : 'local');
 
 // ── Seed (zero-admin bootstrap — disabled once any admin exists) ──────────────
 
@@ -510,8 +521,12 @@ router.get('/operators', async (req, res, next) => {
   try {
     const filter = {};
     if (req.query.status) filter.status = req.query.status.toUpperCase();
-    const operators = await Operator.find(filter).sort({ createdAt: -1 }).select('-passwordHash -mikrotikPass');
-    res.json({ success: true, data: operators });
+    const operators = await Operator.find(filter).sort({ createdAt: -1 }).select('-passwordHash -mikrotikPass').lean();
+    const data = operators.map((op) => ({
+      ...op,
+      healthStatus: normalizeHealthStatus(op.healthStatus, op.lastHealthCheck),
+    }));
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
@@ -607,8 +622,9 @@ router.delete('/operators/:id', isSuperAdmin, async (req, res, next) => {
 });
 
 router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next) => {
+  let op = null;
   try {
-    const op = await Operator.findById(req.params.id);
+    op = await Operator.findById(req.params.id);
     if (!op) return res.status(404).json({ success: false, message: 'Operator not found' });
 
     // Allow caller to pass unsaved form values so the test works before saving
@@ -621,7 +637,23 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
     const target = Object.keys(override).length ? { ...op.toObject(), ...override } : op;
     const result = await testConnection(target);
     await Operator.findByIdAndUpdate(op._id, {
-      $set: { healthStatus: 'OK', healthError: '', lastHealthCheck: new Date() },
+      $set: {
+        healthStatus: 'OK',
+        healthError: '',
+        lastHealthCheck: new Date(),
+        healthFailureCount: 0,
+        healthSuccessCount: 1,
+        healthSource: 'admin-manual-test',
+        healthCheckedBy: healthCheckedBy(),
+      },
+    });
+    logger.info('Operator health status saved', {
+      operatorId: op._id,
+      name: op.name,
+      status: 'OK',
+      source: 'admin-manual-test',
+      host: target.mikrotikHost,
+      checkedBy: healthCheckedBy(),
     });
     res.json({ success: true, message: 'Connection successful', data: result });
   } catch (err) {
@@ -632,6 +664,28 @@ router.post('/operators/:id/test-mikrotik', isSuperAdmin, async (req, res, next)
     else if (/ETIMEDOUT|ECONNRESET|timed out/i.test(raw)) friendly = 'Router unreachable — check the IP address and that this server can reach the router. If the router is on a local network, the cloud backend cannot reach it directly.';
     else if (/login|cannot log in|bad credentials|invalid user/i.test(raw)) friendly = 'Login failed — check the API username and password.';
     else if (/ENOTFOUND|getaddrinfo/.test(raw)) friendly = 'Hostname not found — use an IP address, not a domain name.';
+    if (op?._id) {
+      await Operator.findByIdAndUpdate(op._id, {
+        $set: {
+          healthStatus: 'DOWN',
+          healthError: friendly.slice(0, 200),
+          lastHealthCheck: new Date(),
+          healthSuccessCount: 0,
+          healthSource: 'admin-manual-test',
+          healthCheckedBy: healthCheckedBy(),
+        },
+        $inc: { healthFailureCount: 1 },
+      });
+      logger.info('Operator health status saved', {
+        operatorId: op._id,
+        name: op.name,
+        status: 'DOWN',
+        source: 'admin-manual-test',
+        host: op.mikrotikHost,
+        checkedBy: healthCheckedBy(),
+        error: friendly,
+      });
+    }
     res.status(400).json({ success: false, message: friendly });
   }
 });
@@ -936,24 +990,53 @@ router.post('/transactions/:id/retry-grant', async (req, res, next) => {
 
 router.get('/network/health', isSuperAdmin, async (req, res, next) => {
   try {
-    const operators = await Operator.find({ mikrotikHost: { $nin: ['', null] } })
-      .select('name shortCode mikrotikHost mikrotikPort healthStatus healthError lastHealthCheck')
-      .sort({ name: 1 });
+    const [operators, operatorRouters] = await Promise.all([
+      Operator.find({ mikrotikHost: { $nin: ['', null] } })
+        .select('name shortCode mikrotikHost mikrotikPort healthStatus healthError lastHealthCheck healthSource healthCheckedBy')
+        .sort({ name: 1 }),
+      OperatorRouter.find({ isActive: true })
+        .select('operatorId name host port hotspotServer healthStatus healthError lastHealthCheck healthSource healthCheckedBy')
+        .populate('operatorId', 'name shortCode')
+        .sort({ name: 1 }),
+    ]);
 
-    const routers = operators.map((op) => ({
-      _id: op._id,
+    const mainRouters = operators.map((op) => ({
+      _id: `operator-${op._id}`,
+      type: 'operator-main',
       operatorId: { _id: op._id, name: op.name, shortCode: op.shortCode },
       name: 'Main Router',
       host: op.mikrotikHost,
       port: op.mikrotikPort || 8728,
       hotspotServer: '',
-      healthStatus: op.healthStatus || 'UNKNOWN',
+      healthStatus: normalizeHealthStatus(op.healthStatus, op.lastHealthCheck),
       healthError: op.healthError || '',
       lastHealthCheck: op.lastHealthCheck,
+      healthSource: op.healthSource || '',
+      healthCheckedBy: op.healthCheckedBy || '',
     }));
 
+    const subRouters = operatorRouters.map((r) => ({
+      _id: r._id,
+      type: 'operator-router',
+      operatorId: r.operatorId,
+      name: r.name,
+      host: r.host,
+      port: r.port || 8728,
+      hotspotServer: r.hotspotServer || '',
+      healthStatus: normalizeHealthStatus(r.healthStatus, r.lastHealthCheck),
+      healthError: r.healthError || '',
+      lastHealthCheck: r.lastHealthCheck,
+      healthSource: r.healthSource || '',
+      healthCheckedBy: r.healthCheckedBy || '',
+    }));
+
+    const routers = [...mainRouters, ...subRouters];
     const summary = { total: routers.length, ok: 0, down: 0, unknown: 0 };
-    for (const r of routers) summary[r.healthStatus.toLowerCase()]++;
+    for (const r of routers) {
+      const key = String(r.healthStatus || 'UNKNOWN').toLowerCase();
+      if (summary[key] === undefined) summary.unknown++;
+      else summary[key]++;
+    }
 
     res.json({ success: true, data: routers, summary });
   } catch (err) { next(err); }

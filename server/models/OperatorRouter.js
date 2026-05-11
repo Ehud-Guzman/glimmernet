@@ -13,6 +13,8 @@ const OperatorRouterSchema = new mongoose.Schema({
   healthStatus: { type: String, enum: ['OK', 'DOWN', 'UNKNOWN'], default: 'UNKNOWN' },
   healthError: { type: String, default: '' },
   lastHealthCheck: { type: Date, default: null },
+  healthSource: { type: String, default: '' },
+  healthCheckedBy: { type: String, default: '' },
 }, { timestamps: true });
 
 OperatorRouterSchema.index({ operatorId: 1, isActive: 1 });

@@ -8,6 +8,17 @@ const { audit } = require('../utils/audit');
 const logger = require('../utils/logger');
 
 const router = express.Router();
+const HEALTH_STALE_MS = 10 * 60 * 1000;
+
+const normalizeHealthStatus = (status, lastHealthCheck) => {
+  if (!lastHealthCheck) return status || 'UNKNOWN';
+  const checkedAt = new Date(lastHealthCheck).getTime();
+  if (!Number.isFinite(checkedAt)) return status || 'UNKNOWN';
+  if (status === 'OK' && Date.now() - checkedAt > HEALTH_STALE_MS) return 'UNKNOWN';
+  return status || 'UNKNOWN';
+};
+
+const healthCheckedBy = () => (process.env.RENDER_SERVICE_NAME ? 'render' : 'local');
 
 // ── Operator self-service: manage their own sub-routers ───────────────────────
 
@@ -18,8 +29,13 @@ router.get('/', async (req, res, next) => {
   try {
     const routers = await OperatorRouter.find({ operatorId: req.operator._id })
       .select('-pass')
-      .sort({ createdAt: 1 });
-    res.json({ success: true, data: routers });
+      .sort({ createdAt: 1 })
+      .lean();
+    const data = routers.map((r) => ({
+      ...r,
+      healthStatus: normalizeHealthStatus(r.healthStatus, r.lastHealthCheck),
+    }));
+    res.json({ success: true, data });
   } catch (err) { next(err); }
 });
 
@@ -73,8 +89,9 @@ router.delete('/:id', async (req, res, next) => {
 
 // POST /api/v1/operator/routers/:id/test
 router.post('/:id/test', async (req, res, next) => {
+  let r = null;
   try {
-    const r = await OperatorRouter.findOne({ _id: req.params.id, operatorId: req.operator._id });
+    r = await OperatorRouter.findOne({ _id: req.params.id, operatorId: req.operator._id });
     if (!r) return res.status(404).json({ success: false, message: 'Router not found' });
     // Allow unsaved form values to be tested before saving
     const testRouter = {
@@ -85,8 +102,28 @@ router.post('/:id/test', async (req, res, next) => {
       name: r.name,
     };
     const result = await testRouterConnection(testRouter);
+    await OperatorRouter.findByIdAndUpdate(r._id, {
+      $set: {
+        healthStatus: 'OK',
+        healthError: '',
+        lastHealthCheck: new Date(),
+        healthSource: 'operator-router-manual-test',
+        healthCheckedBy: healthCheckedBy(),
+      },
+    });
     res.json({ success: true, identity: result.identity });
   } catch (err) {
+    if (r?._id) {
+      await OperatorRouter.findByIdAndUpdate(r._id, {
+        $set: {
+          healthStatus: 'DOWN',
+          healthError: (err.message || 'Connection failed').slice(0, 200),
+          lastHealthCheck: new Date(),
+          healthSource: 'operator-router-manual-test',
+          healthCheckedBy: healthCheckedBy(),
+        },
+      });
+    }
     res.status(400).json({ success: false, message: err.message });
   }
 });

@@ -41,11 +41,7 @@ const checkOperator = async (operator, smsEnabled) => {
       failureCount,
     });
 
-    if (failureCount >= 2) {
-      healthStatus = 'DOWN';
-    } else {
-      healthStatus = prevStatus || 'UNKNOWN';
-    }
+    healthStatus = 'DOWN';
   }
 
   await Operator.findByIdAndUpdate(operator._id, {
@@ -55,13 +51,23 @@ const checkOperator = async (operator, smsEnabled) => {
       lastHealthCheck: new Date(),
       healthFailureCount: failureCount,
       healthSuccessCount: successCount,
+      healthSource: 'scheduled-health-check',
+      healthCheckedBy: process.env.RENDER_SERVICE_NAME ? 'render' : 'local',
     },
   });
+  logger.info('Operator health status saved', {
+    operatorId: operator._id,
+    name: operator.name,
+    status: healthStatus,
+    source: 'scheduled-health-check',
+    host: operator.mikrotikHost,
+    failureCount,
+    successCount,
+  });
 
-  const stableDown = failureCount >= 2 && healthStatus === 'DOWN';
   const isStatusChange = healthStatus !== prevStatus;
 
-  if (stableDown || (healthStatus === 'OK' && isStatusChange)) {
+  if (isStatusChange) {
     const msg = healthStatus === 'DOWN'
       ? `GlimmerInk Alert: Your router (${operator.name}) is unreachable. Sessions may not provision. Error: ${healthError}`
       : `GlimmerInk: Your router (${operator.name}) is back online.`;
@@ -84,26 +90,6 @@ const checkOperator = async (operator, smsEnabled) => {
     });
   }
 
-  if (healthStatus !== prevStatus && smsEnabled && operator.ownerPhone) {
-    const msg = healthStatus === 'DOWN'
-      ? `GlimmerInk Alert: Your router (${operator.name}) is unreachable. Sessions may not provision. Error: ${healthError}`
-      : `GlimmerInk: Your router (${operator.name}) is back online.`;
-
-    try {
-      await sendSms({ to: operator.ownerPhone, message: msg });
-    } catch (err) {
-      logger.warn('Health alert SMS failed', { operatorId: operator._id, message: err.message });
-    }
-  }
-
-  if (healthStatus !== prevStatus) {
-    logger.info('Operator health status changed', {
-      operatorId: operator._id,
-      name: operator.name,
-      from: prevStatus,
-      to: healthStatus,
-    });
-  }
 };
 
 const checkOperatorRouter = async (router) => {
@@ -136,7 +122,17 @@ const checkOperatorRouter = async (router) => {
       healthStatus,
       healthError,
       lastHealthCheck: new Date(),
+      healthSource: 'scheduled-health-check',
+      healthCheckedBy: process.env.RENDER_SERVICE_NAME ? 'render' : 'local',
     },
+  });
+  logger.info('OperatorRouter health status saved', {
+    routerId: router._id,
+    operatorId: router.operatorId,
+    name: router.name,
+    status: healthStatus,
+    source: 'scheduled-health-check',
+    host: router.host,
   });
 
   const isStatusChange = healthStatus !== prevStatus;
@@ -156,7 +152,7 @@ const runNetworkHealthCheck = async () => {
   const operators = await Operator.find({
     status: 'ACTIVE',
     mikrotikHost: { $nin: ['', null] },
-  }).select('name ownerPhone mikrotikHost mikrotikPort mikrotikUser mikrotikPass healthStatus');
+  }).select('name ownerPhone mikrotikHost mikrotikPort mikrotikUser mikrotikPass healthStatus healthError healthFailureCount healthSuccessCount');
 
   const smsEnabled = await isConfigured();
 

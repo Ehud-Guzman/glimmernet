@@ -17,6 +17,17 @@ const { audit } = require('../utils/audit');
 
 const router = express.Router();
 const clampLimit = (val, max = 100) => Math.min(Math.max(1, Number(val) || 20), max);
+const HEALTH_STALE_MS = 10 * 60 * 1000;
+
+const normalizeHealthStatus = (status, lastHealthCheck) => {
+  if (!lastHealthCheck) return status || 'UNKNOWN';
+  const checkedAt = new Date(lastHealthCheck).getTime();
+  if (!Number.isFinite(checkedAt)) return status || 'UNKNOWN';
+  if (status === 'OK' && Date.now() - checkedAt > HEALTH_STALE_MS) return 'UNKNOWN';
+  return status || 'UNKNOWN';
+};
+
+const healthCheckedBy = () => (process.env.RENDER_SERVICE_NAME ? 'render' : 'local');
 
 router.use(protectOperator);
 
@@ -52,7 +63,7 @@ router.get('/stats', async (req, res, next) => {
         lifetimeGross: req.operator.lifetimeGross,
         txnCount,
         accessFailedCount,
-        healthStatus:  req.operator.healthStatus,
+        healthStatus: normalizeHealthStatus(req.operator.healthStatus, req.operator.lastHealthCheck),
       },
     });
   } catch (err) {
@@ -291,10 +302,29 @@ router.post('/test-mikrotik', async (req, res, next) => {
   try {
     const result = await testConnection(req.operator);
     await Operator.findByIdAndUpdate(req.operator._id, {
-      $set: { healthStatus: 'OK', healthError: '', lastHealthCheck: new Date() },
+      $set: {
+        healthStatus: 'OK',
+        healthError: '',
+        lastHealthCheck: new Date(),
+        healthFailureCount: 0,
+        healthSuccessCount: 1,
+        healthSource: 'operator-manual-test',
+        healthCheckedBy: healthCheckedBy(),
+      },
     });
     res.json({ success: true, identity: result.identity });
   } catch (err) {
+    await Operator.findByIdAndUpdate(req.operator._id, {
+      $set: {
+        healthStatus: 'DOWN',
+        healthError: (err.message || 'Connection failed').slice(0, 200),
+        lastHealthCheck: new Date(),
+        healthSuccessCount: 0,
+        healthSource: 'operator-manual-test',
+        healthCheckedBy: healthCheckedBy(),
+      },
+      $inc: { healthFailureCount: 1 },
+    });
     res.status(502).json({ success: false, message: err.message });
   }
 });

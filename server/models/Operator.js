@@ -61,6 +61,8 @@ const OperatorSchema = new mongoose.Schema({
   healthError: { type: String, default: '' },
   healthFailureCount: { type: Number, default: 0 },
   healthSuccessCount: { type: Number, default: 0 },
+  healthSource: { type: String, default: '' },
+  healthCheckedBy: { type: String, default: '' },
   // Scheduled email reports
   reportEmailEnabled: { type: Boolean, default: false },
   reportFrequency: { type: String, enum: ['daily', 'weekly'], default: 'weekly' },
